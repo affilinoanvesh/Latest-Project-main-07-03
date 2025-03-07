@@ -25,6 +25,7 @@ const navigationItems = [
       { id: 'products', label: 'Products', path: '/products', icon: Package },
       { id: 'inventory-management', label: 'Inventory Management', path: '/inventory', icon: Boxes },
       { id: 'expiry', label: 'Expiry Tracking', path: '/expiry', icon: Calendar },
+      { id: 'stock-reconciliation', label: 'Stock Reconciliation', path: '/stock-reconciliation', icon: Boxes },
     ]
   },
   {

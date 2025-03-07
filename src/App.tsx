@@ -13,6 +13,7 @@ import ProductExpiry from './pages/expiry';
 import PurchaseOrders from './pages/PurchaseOrders';
 import SuppliersPage from './components/suppliers/SuppliersPage';
 import AdditionalRevenuePage from './pages/AdditionalRevenue';
+import StockReconciliation from './pages/StockReconciliation';
 import Login from './pages/Login';
 import InitialSetup from './pages/InitialSetup';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -75,6 +76,7 @@ function App() {
               <Route path="/expiry" element={<ProductExpiry />} />
               <Route path="/purchase-orders" element={<PurchaseOrders />} />
               <Route path="/suppliers" element={<SuppliersPage />} />
+              <Route path="/stock-reconciliation" element={<StockReconciliation />} />
             </Route>
           </Route>
         </Routes>

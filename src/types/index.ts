@@ -292,3 +292,6 @@ export interface PurchaseOrderItem {
   notes?: string;
   created_at?: Date;
 }
+
+// Stock Reconciliation Types
+export * from './stockReconciliation';

@@ -227,7 +227,7 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
       h === 'item' ||
       h === 'item name' ||
       h.includes('product') || 
-      h.includes('name') ||
+      h.includes('name') || 
       h.includes('description')
     );
     
@@ -361,27 +361,32 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
       
       <div className="mt-4">
         {importLoading && (
-          <div className="flex items-center justify-center p-4">
-            <RefreshCw className="animate-spin mr-2" />
-            <span>Processing import...</span>
+          <div className="flex items-center justify-center p-4 bg-blue-50 border border-blue-200 rounded mb-4">
+            <RefreshCw className="animate-spin mr-2 text-blue-600" />
+            <span className="text-blue-700">Processing import...</span>
           </div>
         )}
         
         {importError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded mb-4" role="alert">
             <div className="flex items-start">
               <div className="flex-shrink-0">
-                <AlertCircle className="h-5 w-5 text-red-400" />
+                <AlertCircle className="h-5 w-5 text-red-500" />
               </div>
               <div className="ml-3">
-                <p className="font-medium">{importError}</p>
+                <p className="font-bold">No items found in the selected import</p>
+                <p className="text-sm">{importError}</p>
+                
                 {debugInfo.length > 0 && (
                   <div className="mt-2">
                     <button
                       onClick={() => setShowDebugInfo(!showDebugInfo)}
-                      className="text-sm underline text-red-600"
+                      className="text-sm underline text-red-600 flex items-center"
                     >
                       {showDebugInfo ? 'Hide details' : 'Show details'}
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ml-1 ${showDebugInfo ? 'transform rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </button>
                     
                     {showDebugInfo && (
@@ -393,17 +398,27 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
                     )}
                   </div>
                 )}
+                
                 <div className="mt-2">
-                  <p className="text-sm">
+                  <p className="text-sm font-medium">
                     Please ensure your CSV file:
                   </p>
-                  <ul className="list-disc list-inside text-sm ml-2 mt-1">
+                  <ul className="list-disc list-inside text-sm ml-2 mt-1 space-y-1">
                     <li>Has a header row with column names</li>
                     <li>Contains a column for SKU/Product Code</li>
                     <li>Contains a column for Price/Cost</li>
                     <li>Has valid numeric values for prices</li>
                     <li>Uses comma (,) as the delimiter</li>
                   </ul>
+                  
+                  <div className="mt-3 bg-gray-50 p-2 rounded border border-gray-200 text-xs">
+                    <p className="font-medium mb-1">Example CSV format:</p>
+                    <pre className="text-gray-600">
+                      SKU,Product Name,Price<br/>
+                      ABC123,Dog Food,12.99<br/>
+                      XYZ456,Cat Toy,5.50
+                    </pre>
+                  </div>
                 </div>
               </div>
             </div>
@@ -411,7 +426,7 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
         )}
         
         {importSuccess && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <div className="bg-green-50 border-l-4 border-green-500 text-green-700 px-4 py-3 rounded mb-4" role="alert">
             <div className="flex">
               <div className="py-1">
                 <svg className="fill-current h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
@@ -420,6 +435,7 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
               </div>
               <div>
                 <p className="font-bold">{importSuccess}</p>
+                <p className="text-sm">The updated prices are now reflected in your inventory.</p>
               </div>
             </div>
           </div>
@@ -476,16 +492,23 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Price List File (CSV)
               </label>
-              <input
-                type="file"
-                accept=".csv"
-                className="w-full p-2 border rounded"
-                onChange={handleFileChange}
-                required
-              />
+              <div className="flex items-center">
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="w-full p-2 border rounded"
+                  onChange={handleFileChange}
+                  required
+                />
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 File must contain columns for "Product Name", "SKU", and "Supplier" (price)
               </p>
+              {importFile && (
+                <p className="text-sm text-indigo-600 mt-1">
+                  Selected: {importFile.name}
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -538,7 +561,7 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-1 inline" />
                 )}
-                {importMode === 'file' ? 'Import' : 'Reapply Import'}
+                {importMode === 'file' ? 'Import Prices' : 'Reapply Import'}
               </>
             )}
           </button>
@@ -548,9 +571,9 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
       {recentImports.length > 0 && (
         <div className="mt-6">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Recent Imports</h3>
-          <div className="bg-gray-50 p-3 rounded">
+          <div className="bg-gray-50 rounded border border-gray-200 overflow-hidden">
             <table className="min-w-full text-sm">
-              <thead>
+              <thead className="bg-gray-100">
                 <tr>
                   <th className="text-left font-medium text-gray-500 px-4 py-2">Date</th>
                   <th className="text-left font-medium text-gray-500 px-4 py-2">Supplier</th>
@@ -561,12 +584,12 @@ const SupplierImportForm: React.FC<SupplierImportFormProps> = ({
               </thead>
               <tbody>
                 {recentImports.map((imp, index) => (
-                  <tr key={index} className="border-t border-gray-200">
+                  <tr key={index} className="border-t border-gray-200 hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-700">{imp.date}</td>
-                    <td className="px-4 py-3 text-gray-700">{imp.supplier}</td>
+                    <td className="px-4 py-3 text-gray-900 font-medium">{imp.supplier}</td>
                     <td className="px-4 py-3 text-gray-700">{imp.filename}</td>
-                    <td className="px-4 py-3 text-gray-700">{imp.updated}</td>
-                    <td className="px-4 py-3 text-gray-700">{imp.skipped}</td>
+                    <td className="px-4 py-3 text-green-600">{imp.updated}</td>
+                    <td className="px-4 py-3 text-red-600">{imp.skipped}</td>
                   </tr>
                 ))}
               </tbody>

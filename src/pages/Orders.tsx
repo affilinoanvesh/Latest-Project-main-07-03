@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter, ChevronLeft, ChevronRight, BarChart2, CheckCircle } from 'lucide-react';
 import DateRangePicker from '../components/DateRangePicker';
 import { DateRange, Order } from '../types';
 import { fetchOrders, fetchInventory, fetchOverheadCosts, hasApiCredentials, deleteOrder } from '../services/api';
 import { calculateProfitAndLoss } from '../services/pnl';
+import { processOrderStockMovements } from '../db/operations/orders/processOrderStockMovements';
 
 const Orders: React.FC = () => {
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -21,47 +22,61 @@ const Orders: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  
   // Sorting
   const [sortField, setSortField] = useState<keyof Order>('date_created');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // Add a new state for tracking stock movement processing
+  const [processingStockMovements, setProcessingStockMovements] = useState(false);
+  const [stockMovementSuccess, setStockMovementSuccess] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
     try {
+      setLoading(true);
+      setError(null);
+      
       // Check if API credentials are set
       const hasCredentials = await hasApiCredentials();
       if (!hasCredentials) {
-        setError('API credentials not set. Please go to Settings to configure your API credentials.');
+        setError('API credentials not set. Please set them in the settings page.');
         setLoading(false);
         return;
       }
       
-      // Fetch data
+      // Fetch orders
       const ordersData = await fetchOrders();
-      const inventoryData = await fetchInventory();
+      
+      // Filter orders by date range
+      const filteredByDate = ordersData.filter(order => {
+        if (!order.date_created) return false;
+        const orderDate = new Date(order.date_created);
+        const start = dateRange.startDate;
+        const end = dateRange.endDate;
+        return orderDate >= start && orderDate <= end;
+      });
+      
+      // Fetch inventory and overhead costs for profit calculation
+      const inventory = await fetchInventory();
       const overheadCosts = await fetchOverheadCosts();
       
-      // Calculate profit and margins
+      // Calculate profit and loss
       const result = await calculateProfitAndLoss(
-        ordersData,
-        inventoryData,
+        filteredByDate,
+        inventory,
         overheadCosts,
         dateRange
       );
       
-      // Filter orders by date range
-      const filteredOrders = result.orders.filter(order => {
-        const orderDate = new Date(order.date_created);
-        return orderDate >= dateRange.startDate && orderDate <= dateRange.endDate;
-      });
-      
-      setOrders(filteredOrders);
-      setFilteredOrders(filteredOrders);
+      setOrders(result.orders);
+      setFilteredOrders(result.orders);
     } catch (error) {
-      console.error('Error loading orders data:', error);
-      setError('Failed to load orders data. Please check your API credentials and try again.');
+      console.error('Error loading data:', error);
+      setError('Failed to load data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -71,26 +86,33 @@ const Orders: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Filter orders when search term or status filter changes
   useEffect(() => {
-    let filtered = orders;
+    // Filter orders based on search term and status filter
+    let filtered = [...orders];
     
-    // Apply status filter
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(order => 
+        order.number.toString().includes(lowerSearchTerm) ||
+        order.line_items.some(item => 
+          item.name.toLowerCase().includes(lowerSearchTerm) ||
+          (item.sku && item.sku.toLowerCase().includes(lowerSearchTerm))
+        )
+      );
+    }
+    
     if (statusFilter !== 'all') {
       filtered = filtered.filter(order => order.status === statusFilter);
     }
     
-    // Apply search filter
-    if (searchTerm.trim() !== '') {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(order => 
-        order.number.toLowerCase().includes(term) ||
-        order.line_items.some(item => item.name.toLowerCase().includes(term))
-      );
-    }
-    
     setFilteredOrders(filtered);
-  }, [searchTerm, orders, statusFilter]);
+    
+    // Calculate total pages
+    setTotalPages(Math.ceil(filtered.length / pageSize));
+    
+    // Reset to first page when filters change
+    setCurrentPage(1);
+  }, [orders, searchTerm, statusFilter, pageSize]);
 
   const handleSort = (field: keyof Order) => {
     if (field === sortField) {
@@ -105,16 +127,38 @@ const Orders: React.FC = () => {
     setExpandedOrderId(expandedOrderId === orderId ? null : orderId);
   };
 
-  const formatCurrency = (value: number | string) => {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  const formatCurrency = (value: number | string | undefined) => {
+    // Ensure we have a number to format
+    let numValue: number;
+    if (typeof value === 'string') {
+      numValue = parseFloat(value) || 0;
+    } else if (typeof value === 'number') {
+      numValue = value;
+    } else {
+      numValue = 0;
+    }
+    
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD'
     }).format(numValue);
   };
 
-  const formatDate = (dateString: string) => {
-    return format(new Date(dateString), 'MMM dd, yyyy h:mm a');
+  const formatDate = (dateString: string | Date | null) => {
+    if (!dateString) return 'N/A';
+    try {
+      // Handle different date input types
+      const date = typeof dateString === 'string' 
+        ? new Date(dateString) 
+        : dateString instanceof Date 
+          ? dateString 
+          : new Date();
+      
+      return format(date, 'MMM dd, yyyy h:mm a');
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid Date';
+    }
   };
 
   const refreshData = async () => {
@@ -141,23 +185,64 @@ const Orders: React.FC = () => {
   // Get unique order statuses for filter
   const orderStatuses = ['all', ...new Set(orders.map(order => order.status))];
 
+  // Sort orders
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     let aValue: any = a[sortField];
     let bValue: any = b[sortField];
     
     // Handle special cases
     if (sortField === 'date_created') {
-      aValue = new Date(a.date_created).getTime();
-      bValue = new Date(b.date_created).getTime();
+      aValue = a.date_created ? new Date(a.date_created).getTime() : 0;
+      bValue = b.date_created ? new Date(b.date_created).getTime() : 0;
     } else if (sortField === 'total' || sortField === 'shipping_total') {
-      aValue = parseFloat(a[sortField] as string);
-      bValue = parseFloat(b[sortField] as string);
+      aValue = parseFloat(String(a[sortField] || '0'));
+      bValue = parseFloat(String(b[sortField] || '0'));
     }
     
     if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
     if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
     return 0;
   });
+
+  // Get current page of orders
+  const indexOfLastOrder = currentPage * pageSize;
+  const indexOfFirstOrder = indexOfLastOrder - pageSize;
+  const currentOrders = sortedOrders.slice(indexOfFirstOrder, indexOfLastOrder);
+  
+  // Change page
+  const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+  
+  // Go to next page
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+  
+  // Go to previous page
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  // Add a function to process stock movements for an order
+  const handleProcessStockMovements = async (order: Order) => {
+    try {
+      setProcessingStockMovements(true);
+      await processOrderStockMovements(order);
+      setStockMovementSuccess(`Stock movements created for order #${order.number}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setStockMovementSuccess(null);
+      }, 3000);
+    } catch (error: any) {
+      setError(`Failed to create stock movements: ${error.message}`);
+    } finally {
+      setProcessingStockMovements(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -206,21 +291,42 @@ const Orders: React.FC = () => {
       )}
       
       <div className="bg-white shadow rounded-lg p-4 mb-6">
-        <div className="flex items-center">
-          <Filter className="h-5 w-5 text-gray-400 mr-2" />
-          <span className="text-sm font-medium text-gray-700 mr-4">Filter by Status:</span>
+        <div className="flex flex-col md:flex-row items-center justify-between">
+          <div className="flex items-center mb-4 md:mb-0">
+            <Filter className="h-5 w-5 text-gray-400 mr-2" />
+            <span className="text-sm font-medium text-gray-700 mr-4">Filter by Status:</span>
+            
+            <select
+              className="p-2 border rounded"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              {orderStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status === 'all' ? 'All Statuses' : status.charAt(0).toUpperCase() + status.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
           
-          <select
-            className="p-2 border rounded"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            {orderStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status === 'all' ? 'All Statuses' : status.charAt(0).toUpperCase() + status.slice(1)}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center">
+            <span className="text-sm font-medium text-gray-700 mr-2">Orders per page:</span>
+            <select
+              className="p-2 border rounded mr-4"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {[10, 20, 50, 100].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+            
+            <span className="text-sm text-gray-600">
+              Showing {indexOfFirstOrder + 1}-{Math.min(indexOfLastOrder, filteredOrders.length)} of {filteredOrders.length} orders
+            </span>
+          </div>
         </div>
       </div>
       
@@ -301,7 +407,7 @@ const Orders: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sortedOrders.map(order => (
+              {currentOrders.map(order => (
                 <React.Fragment key={order.id}>
                   <tr className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -323,7 +429,7 @@ const Orders: React.FC = () => {
                       {formatCurrency(order.total)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(order.profit || 0)}
+                      {order.profit ? formatCurrency(order.profit) : formatCurrency(0)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {order.margin ? `${order.margin.toFixed(2)}%` : '0%'}
@@ -360,6 +466,15 @@ const Orders: React.FC = () => {
                             <Trash2 className="h-5 w-5" />
                           </button>
                         )}
+                        
+                        <button
+                          onClick={() => handleProcessStockMovements(order)}
+                          disabled={processingStockMovements}
+                          className="ml-2 p-1 text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                          title="Create stock movements for this order"
+                        >
+                          <BarChart2 size={16} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -377,11 +492,19 @@ const Orders: React.FC = () => {
                             </div>
                             <div>
                               <p className="text-xs text-gray-500">Shipping</p>
-                              <p className="text-sm">{formatCurrency(order.shipping_total)}</p>
+                              <p className="text-sm">
+                                {formatCurrency(order.shipping_total)}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-500">Cost Total</p>
-                              <p className="text-sm">{formatCurrency(order.cost_total || 0)}</p>
+                              <p className="text-sm">
+                                {formatCurrency(
+                                  order.profit !== undefined && order.total
+                                    ? parseFloat(order.total) - order.profit
+                                    : 0
+                                )}
+                              </p>
                             </div>
                           </div>
                           
@@ -464,6 +587,104 @@ const Orders: React.FC = () => {
           </table>
         </div>
       </div>
+      
+      {/* Pagination Controls */}
+      <div className="mt-6 flex items-center justify-between">
+        <div className="flex-1 flex justify-between sm:hidden">
+          <button
+            onClick={prevPage}
+            disabled={currentPage === 1}
+            className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${
+              currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Previous
+          </button>
+          <button
+            onClick={nextPage}
+            disabled={currentPage === totalPages}
+            className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${
+              currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Next
+          </button>
+        </div>
+        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-gray-700">
+              Showing <span className="font-medium">{indexOfFirstOrder + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(indexOfLastOrder, filteredOrders.length)}</span> of{' '}
+              <span className="font-medium">{filteredOrders.length}</span> results
+            </p>
+          </div>
+          <div>
+            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <button
+                onClick={prevPage}
+                disabled={currentPage === 1}
+                className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
+                  currentPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <span className="sr-only">Previous</span>
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              
+              {/* Page numbers */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                // Show pages around current page
+                let pageNum;
+                if (totalPages <= 5) {
+                  // If 5 or fewer pages, show all
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  // If near the start, show first 5 pages
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  // If near the end, show last 5 pages
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  // Otherwise show current page and 2 pages on each side
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => paginate(pageNum)}
+                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                      currentPage === pageNum
+                        ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+              
+              <button
+                onClick={nextPage}
+                disabled={currentPage === totalPages}
+                className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
+                  currentPage === totalPages ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <span className="sr-only">Next</span>
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </nav>
+          </div>
+        </div>
+      </div>
+      
+      {stockMovementSuccess && (
+        <div className="mb-4 p-2 bg-green-100 text-green-700 rounded flex items-center">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          {stockMovementSuccess}
+        </div>
+      )}
     </div>
   );
 };

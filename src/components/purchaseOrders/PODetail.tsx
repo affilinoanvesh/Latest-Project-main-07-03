@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { ArrowLeft, Edit, Trash2, CheckCircle, Clock, AlertCircle, Printer, Download, Calendar, Tag } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, CheckCircle, Clock, AlertCircle, Printer, Download, Calendar, Tag, BarChart2 } from 'lucide-react';
 import { PurchaseOrder, PurchaseOrderItem } from '../../types';
 import { getPurchaseOrderWithItems, deletePurchaseOrder } from '../../db/operations/purchaseOrders';
+import { processPurchaseOrderStockMovements } from '../../db/operations/purchaseOrders/processPurchaseOrderStockMovements';
 
 interface PODetailProps {
   purchaseOrderId: number;
@@ -22,6 +23,8 @@ const PODetail: React.FC<PODetailProps> = ({
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
   const [items, setItems] = useState<PurchaseOrderItem[]>([]);
   const [activeTab, setActiveTab] = useState<'details' | 'items'>('details');
+  const [processingStockMovements, setProcessingStockMovements] = useState(false);
+  const [stockMovementSuccess, setStockMovementSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const loadPurchaseOrder = async () => {
@@ -100,6 +103,27 @@ const PODetail: React.FC<PODetailProps> = ({
     window.print();
   };
 
+  const handleProcessStockMovements = async () => {
+    try {
+      if (!purchaseOrder) {
+        setError('Purchase order not found');
+        return;
+      }
+      
+      setProcessingStockMovements(true);
+      await processPurchaseOrderStockMovements(purchaseOrder, items);
+      setStockMovementSuccess(`Stock movements created for purchase order #${purchaseOrder.reference_number}`);
+      
+      setTimeout(() => {
+        setStockMovementSuccess(null);
+      }, 3000);
+    } catch (error: any) {
+      setError(`Failed to create stock movements: ${error.message}`);
+    } finally {
+      setProcessingStockMovements(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -175,6 +199,22 @@ const PODetail: React.FC<PODetailProps> = ({
             className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors flex items-center"
           >
             <Trash2 size={16} className="mr-1" /> Delete
+          </button>
+          
+          <button
+            onClick={handleProcessStockMovements}
+            disabled={processingStockMovements || purchaseOrder.status === 'ordered'}
+            className={`px-3 py-1 rounded text-white ${
+              purchaseOrder.status === 'ordered' 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+            title={purchaseOrder.status === 'ordered' ? 'Cannot create stock movements for ordered POs' : 'Create stock movements'}
+          >
+            <div className="flex items-center">
+              <BarChart2 size={16} className="mr-1" />
+              <span>Create Stock Movements</span>
+            </div>
           </button>
         </div>
       </div>
@@ -335,10 +375,14 @@ const PODetail: React.FC<PODetailProps> = ({
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right">
-                        <div className="text-sm text-gray-900">${item.unit_price.toFixed(2)}</div>
+                        <div className="text-sm text-gray-900">
+                          ${item.unit_price ? item.unit_price.toFixed(2) : '0.00'}
+                        </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right">
-                        <div className="text-sm font-medium text-gray-900">${item.total_price.toFixed(2)}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          ${item.total_price ? item.total_price.toFixed(2) : '0.00'}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -355,6 +399,13 @@ const PODetail: React.FC<PODetailProps> = ({
                 </tr>
               </tfoot>
             </table>
+          </div>
+        )}
+        
+        {stockMovementSuccess && (
+          <div className="mt-4 p-2 bg-green-100 text-green-700 rounded flex items-center">
+            <CheckCircle className="h-5 w-5 mr-2" />
+            {stockMovementSuccess}
           </div>
         )}
       </div>

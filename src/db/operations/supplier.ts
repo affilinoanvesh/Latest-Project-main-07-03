@@ -49,9 +49,10 @@ export async function saveSupplierImportItems(importId: number, items: SupplierP
       // Note: supplier_name and name don't exist in the database
     }));
     
-    // Use batch insert for better performance
-    for (const item of itemsWithImportId) {
-      await supplierImportItemsService.add(item as any);
+    // Use bulkAdd for better performance and to avoid duplicate entries
+    if (itemsWithImportId.length > 0) {
+      await supplierImportItemsService.bulkAdd(itemsWithImportId as any);
+      console.log(`Bulk added ${itemsWithImportId.length} supplier import items`);
     }
   } catch (error) {
     console.error('Error saving supplier import items:', error);
