@@ -1,0 +1,27 @@
+{
+  "name": "WooCommerce P&L Tracker",
+  "short_name": "P&L Tracker",
+  "description": "Track profit and loss for your WooCommerce store",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#7f54b3",
+  "icons": [
+    {
+      "src": "/icons/favicon.svg",
+      "sizes": "64x64 128x128 256x256",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+} 
