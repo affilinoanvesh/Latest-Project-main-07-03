@@ -176,16 +176,16 @@ const ProductTable: React.FC<ProductTableProps> = ({
   };
 
   return (
-    <div className="bg-white shadow rounded-lg overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+    <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      <div className="overflow-x-auto max-w-full">
+        <table className="w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                 Expand
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-80"
                 onClick={() => onSort('name')}
               >
                 <div className="flex items-center">
@@ -196,7 +196,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-32"
                 onClick={() => onSort('sku')}
               >
                 <div className="flex items-center">
@@ -207,7 +207,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-28"
                 onClick={() => onSort('regular_price')}
               >
                 <div className="flex items-center">
@@ -218,7 +218,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-28"
                 onClick={() => onSort('sale_price')}
               >
                 <div className="flex items-center">
@@ -229,7 +229,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-28"
                 onClick={() => onSort('cost_price')}
               >
                 <div className="flex items-center">
@@ -240,7 +240,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-32"
                 onClick={() => onSort('supplier_price')}
               >
                 <div className="flex items-center">
@@ -251,14 +251,14 @@ const ProductTable: React.FC<ProductTableProps> = ({
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24"
               >
                 <div className="flex items-center">
                   Margin
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-20"
                 onClick={() => onSort('stock_quantity')}
               >
                 <div className="flex items-center">
@@ -268,7 +268,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
                   )}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                 Actions
               </th>
             </tr>
@@ -300,11 +300,11 @@ const ProductTable: React.FC<ProductTableProps> = ({
                       <span className="text-gray-300">-</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    <div className="flex items-center">
-                      {product.name}
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="break-words">{product.name}</span>
                       {product.type === 'variable' && (
-                        <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                        <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full flex-shrink-0">
                           Variable
                         </span>
                       )}
@@ -314,9 +314,9 @@ const ProductTable: React.FC<ProductTableProps> = ({
                             e.stopPropagation();
                             toggleProductExpand(product.id);
                           }}
-                          className="ml-2 text-xs text-blue-600 hover:text-blue-800 bg-white border border-blue-200 hover:bg-blue-50 px-3 py-1 rounded-full flex items-center"
+                          className="text-xs text-blue-600 hover:text-blue-800 bg-white border border-blue-200 hover:bg-blue-50 px-3 py-1 rounded-full flex items-center flex-shrink-0"
                         >
-                          {expandedProductIds.has(product.id) ? 'Hide' : 'Show'} variations
+                          {expandedProductIds.has(product.id) ? 'Hide' : 'Show'}
                           <ChevronDown className={`h-3 w-3 ml-1 transform transition-transform ${expandedProductIds.has(product.id) ? 'rotate-180' : ''}`} />
                         </button>
                       )}

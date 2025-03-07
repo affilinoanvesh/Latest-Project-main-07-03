@@ -459,7 +459,7 @@ const Products: React.FC = () => {
   });
 
   return (
-    <div className="p-6">
+    <div className="px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">Products</h1>
         <div className="flex space-x-2">
@@ -498,16 +498,18 @@ const Products: React.FC = () => {
       )}
       
       {/* Products Table */}
-      <ProductTable 
-        products={sortedProducts}
-        sortField={sortField}
-        sortDirection={sortDirection}
-        onSort={handleSort}
-        onProductsUpdated={(updatedProducts) => {
-          setProducts(updatedProducts);
-          setFilteredProducts(updatedProducts);
-        }}
-      />
+      <div className="overflow-hidden">
+        <ProductTable 
+          products={sortedProducts}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          onProductsUpdated={(updatedProducts) => {
+            setProducts(updatedProducts);
+            setFilteredProducts(updatedProducts);
+          }}
+        />
+      </div>
     </div>
   );
 };
