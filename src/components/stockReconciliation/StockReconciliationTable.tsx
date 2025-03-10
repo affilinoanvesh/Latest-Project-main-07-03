@@ -10,7 +10,8 @@ import {
   History, 
   BarChart2, 
   Edit,
-  MoreHorizontal
+  MoreHorizontal,
+  FileText
 } from 'lucide-react';
 
 interface StockReconciliationTableProps {
@@ -18,6 +19,7 @@ interface StockReconciliationTableProps {
   onViewMovements: (sku: string) => void;
   onReconcile: (sku: string) => void;
   onAddAdjustment: (sku?: string) => void;
+  onViewReconciliationHistory: (sku: string) => void;
   loading?: boolean;
   isFiltered?: boolean;
 }
@@ -27,10 +29,10 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
   onViewMovements,
   onReconcile,
   onAddAdjustment,
+  onViewReconciliationHistory,
   loading = false,
   isFiltered = false
 }) => {
-  const [expandedSku, setExpandedSku] = useState<string | null>(null);
   const [sortField, setSortField] = useState<keyof StockReconciliationSummary>('sku');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
@@ -121,7 +123,6 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
           <table className="w-full divide-y divide-gray-200 border-collapse">
             <thead className="bg-gray-50">
               <tr>
-                <th className="w-8 px-1 py-2"></th>
                 <th className="w-20 px-1 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <button
                     className="flex items-center focus:outline-none"
@@ -209,113 +210,110 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedData.map((item) => (
-                <React.Fragment key={item.sku}>
-                  <tr 
-                    className={`hover:bg-gray-50 ${Math.abs(item.discrepancy) > 0 ? 'bg-red-50' : ''}`}
-                  >
-                    <td className="px-1 py-2 whitespace-nowrap">
-                      <button
-                        onClick={() => setExpandedSku(expandedSku === item.sku ? null : item.sku)}
-                        className="text-gray-500 hover:text-gray-700 focus:outline-none"
+                <tr 
+                  key={item.sku}
+                  className={`hover:bg-gray-50 ${Math.abs(item.discrepancy) > 0 ? 'bg-red-50' : ''}`}
+                >
+                  <td className="px-1 py-2 whitespace-nowrap text-xs font-medium text-gray-900">
+                    {item.sku}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500 truncate max-w-[120px]" title={item.product_name}>
+                    {item.product_name}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.initial_stock}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.total_sales}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.total_adjustments}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.total_purchases}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.expected_stock}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.actual_stock}
+                  </td>
+                  <td className={`px-1 py-2 whitespace-nowrap text-xs font-medium ${item.discrepancy === 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {item.discrepancy > 0 ? `+${item.discrepancy}` : item.discrepancy}
+                    {item.discrepancy !== 0 && (
+                      <AlertTriangle className="inline-block ml-1 h-3 w-3" />
+                    )}
+                    {item.discrepancy === 0 && (
+                      <CheckCircle className="inline-block ml-1 h-3 w-3" />
+                    )}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
+                    {item.last_reconciled ? formatNZDate(item.last_reconciled) : 'Never'}
+                  </td>
+                  <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500 relative">
+                    <button
+                      onClick={(e) => toggleActionMenu(item.sku, e)}
+                      className="p-1 rounded-full hover:bg-gray-100"
+                      title="Actions"
+                    >
+                      <MoreHorizontal className="h-4 w-4 text-gray-500" />
+                    </button>
+                    
+                    {openActionMenu === item.sku && (
+                      <div 
+                        ref={actionMenuRef}
+                        className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border"
                       >
-                        {expandedSku === item.sku ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </button>
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs font-medium text-gray-900">
-                      {item.sku}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500 truncate max-w-[120px]" title={item.product_name}>
-                      {item.product_name}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.initial_stock}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.total_sales}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.total_adjustments}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.total_purchases}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.expected_stock}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.actual_stock}
-                    </td>
-                    <td className={`px-1 py-2 whitespace-nowrap text-xs font-medium ${item.discrepancy === 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {item.discrepancy > 0 ? `+${item.discrepancy}` : item.discrepancy}
-                      {item.discrepancy !== 0 && (
-                        <AlertTriangle className="inline-block ml-1 h-3 w-3" />
-                      )}
-                      {item.discrepancy === 0 && (
-                        <CheckCircle className="inline-block ml-1 h-3 w-3" />
-                      )}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {item.last_reconciled ? formatNZDate(item.last_reconciled) : 'Never'}
-                    </td>
-                    <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-500 relative">
-                      <div className="flex items-center justify-center">
-                        <button
-                          onClick={(e) => toggleActionMenu(item.sku, e)}
-                          className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-colors"
-                          title="Actions"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </button>
-                        
-                        {openActionMenu === item.sku && (
-                          <div 
-                            ref={actionMenuRef}
-                            className="absolute right-0 mt-1 bg-white rounded-md shadow-lg border border-gray-200 z-10 py-1 min-w-[120px]"
-                            style={{ top: '100%', right: '0' }}
+                        <div className="py-1">
+                          <button
+                            onClick={() => {
+                              setOpenActionMenu(null);
+                              onViewMovements(item.sku);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            title="View stock movement history"
                           >
-                            <button
-                              onClick={() => {
-                                onViewMovements(item.sku);
-                                setOpenActionMenu(null);
-                              }}
-                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center text-blue-600"
-                              title={`View movement history for ${item.product_name}`}
-                            >
-                              <History className="h-3 w-3 mr-2" />
-                              <span>View History</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                onReconcile(item.sku);
-                                setOpenActionMenu(null);
-                              }}
-                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center text-green-600"
-                              title={`Reconcile stock for ${item.product_name}`}
-                            >
-                              <BarChart2 className="h-3 w-3 mr-2" />
-                              <span>Reconcile</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                onAddAdjustment(item.sku);
-                                setOpenActionMenu(null);
-                              }}
-                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center text-indigo-600"
-                              title={`Adjust stock for ${item.product_name} (${item.sku})`}
-                            >
-                              <Edit className="h-3 w-3 mr-2" />
-                              <span>Adjust Stock</span>
-                            </button>
-                          </div>
-                        )}
+                            <History className="mr-2 h-4 w-4" />
+                            View Movements
+                          </button>
+                          <button
+                            onClick={() => {
+                              setOpenActionMenu(null);
+                              onReconcile(item.sku);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            title="Reconcile current stock"
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Reconcile
+                          </button>
+                          <button
+                            onClick={() => {
+                              setOpenActionMenu(null);
+                              onAddAdjustment(item.sku);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            title="Add manual stock adjustment"
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Adjustment
+                          </button>
+                          <button
+                            onClick={() => {
+                              setOpenActionMenu(null);
+                              onViewReconciliationHistory(item.sku);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            title="View reconciliation history and notes"
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            Reconciliation History
+                          </button>
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                </React.Fragment>
+                    )}
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

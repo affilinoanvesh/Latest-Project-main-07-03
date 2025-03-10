@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { StockMovement } from '../../types';
 import { formatNZDate } from '../../utils/dateUtils';
-import { X, Filter, Calendar, ShoppingBag, ChevronLeft, ChevronRight, List, BarChart } from 'lucide-react';
+import { X, Filter, Calendar, ShoppingBag, ChevronLeft, ChevronRight, List, BarChart, Edit } from 'lucide-react';
 import { supabase } from '../../services/supabase';
+import { settingsService } from '../../services';
+import EditMovementModal from './EditMovementModal';
 
 interface StockMovementModalProps {
   sku: string;
@@ -35,11 +37,15 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalOrders, setTotalOrders] = useState(0);
+  const [filteredOrderCount, setFilteredOrderCount] = useState(0);
   
   // Filter state for movements
-  const [typeFilter, setTypeFilter] = useState<string>('sale');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [filteredMovements, setFilteredMovements] = useState<StockMovement[]>(movements);
+  
+  // State for editing movements
+  const [editingMovementId, setEditingMovementId] = useState<number | null>(null);
   
   // Load data on component mount
   useEffect(() => {
@@ -49,58 +55,60 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
       applyMovementFilters();
     }
   }, [viewMode, sku, page, pageSize, typeFilter, sortOrder]);
-
-  // Function to load orders directly using a simpler approach
+  
+  // Load orders that contain this SKU
   const loadOrders = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
+      // Check if we should exclude on-hold orders
+      const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
       
-      // Get all orders
-      const { data: orderData, error } = await supabase
+      // Build the query
+      let query = supabase
         .from('orders')
-        .select('*')
-        .order('date_created', { ascending: false });
+        .select('id, number, date_created, status, line_items, total', { count: 'exact' });
+      
+      // Add filter for on-hold orders if needed
+      if (excludeOnHold) {
+        query = query.neq('status', 'on-hold');
+      }
+      
+      // Execute the query
+      const { data, count, error } = await query;
       
       if (error) {
         console.error('Error loading orders:', error);
-        setLoading(false);
         return;
       }
       
-      // Process the orders to find those containing the SKU
-      const processedOrders: OrderItem[] = [];
+      // Filter orders to only include those with the specified SKU
+      const ordersWithSku: OrderItem[] = [];
       
-      orderData?.forEach(order => {
-        const lineItems = order.line_items || [];
-        const matchingItems = lineItems.filter((item: any) => 
-          item.sku === sku || 
-          (typeof item.sku === 'string' && item.sku.toLowerCase() === sku.toLowerCase())
-        );
-        
-        matchingItems.forEach((item: any) => {
-          processedOrders.push({
-            number: order.number,
-            date_created: order.date_created,
-            status: order.status,
-            sku: item.sku,
-            quantity: item.quantity,
-            total: order.total
-          });
-        });
-      });
+      if (data) {
+        for (const order of data) {
+          const lineItems = order.line_items || [];
+          for (const item of lineItems) {
+            if (item.sku === sku) {
+              ordersWithSku.push({
+                number: order.number,
+                date_created: order.date_created,
+                status: order.status,
+                sku: item.sku,
+                quantity: item.quantity,
+                total: item.total
+              });
+              break; // Only add the order once
+            }
+          }
+        }
+      }
       
-      // Set total count and apply pagination
-      setTotalOrders(processedOrders.length);
-      
-      const paginatedOrders = processedOrders.slice(
-        (page - 1) * pageSize, 
-        page * pageSize
-      );
-      
-      setOrders(paginatedOrders);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error in loadOrders:', err);
+      setOrders(ordersWithSku);
+      setTotalOrders(count || 0);
+      setFilteredOrderCount(ordersWithSku.length);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -190,8 +198,19 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
     setPage(newPage);
   };
 
-  // Calculate total pages
-  const totalPages = Math.ceil(totalOrders / pageSize);
+  // Calculate total pages based on filtered order count instead of total orders
+  const totalPages = Math.ceil(filteredOrderCount / pageSize);
+
+  // Handle edit success
+  const handleEditSuccess = () => {
+    // Refresh the movements data
+    if (viewMode === 'orders') {
+      loadOrders();
+    } else {
+      // Re-apply filters to refresh the view
+      applyMovementFilters();
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -262,10 +281,10 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
                     className="border rounded px-2 py-1 text-sm"
                   >
                     <option value="all">All Types</option>
-                    <option value="sale">Sales Only</option>
-                    <option value="initial">Initial Stock</option>
-                    <option value="adjustment">Adjustments</option>
+                    <option value="sale">Sales</option>
                     <option value="purchase">Purchases</option>
+                    <option value="adjustment">Adjustments</option>
+                    <option value="initial">Initial Stock</option>
                   </select>
                 </div>
                 
@@ -319,19 +338,19 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
               <table className="min-w-full bg-white">
                 <thead className="bg-gray-100">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th key="order-date-header" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Date
                     </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th key="order-number-header" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Order #
                     </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th key="order-status-header" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th key="order-quantity-header" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Quantity
                     </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th key="order-total-header" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total
                     </th>
                   </tr>
@@ -361,9 +380,18 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
                 </tbody>
               </table>
               
-              {/* Pagination */}
+              {/* Always show pagination info */}
+              <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 sm:px-6 mt-4">
+                <div className="text-sm text-gray-700">
+                  Showing <span className="font-medium">{filteredOrderCount > 0 ? 1 : 0}</span> to{' '}
+                  <span className="font-medium">{Math.min(filteredOrderCount, pageSize)}</span> of{' '}
+                  <span className="font-medium">{filteredOrderCount}</span> results
+                </div>
+              </div>
+              
+              {/* Pagination controls - only shown when multiple pages */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 sm:px-6 mt-4">
+                <div className="flex items-center justify-between px-4 py-3 sm:px-6">
                   <div className="flex flex-1 justify-between sm:hidden">
                     <button
                       onClick={() => handlePageChange(page - 1)}
@@ -381,13 +409,7 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
                     </button>
                   </div>
                   <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm text-gray-700">
-                        Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to{' '}
-                        <span className="font-medium">{Math.min(page * pageSize, totalOrders)}</span> of{' '}
-                        <span className="font-medium">{totalOrders}</span> results
-                      </p>
-                    </div>
+                    <div></div> {/* Empty div to push pagination to the right */}
                     <div>
                       <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
                         <button
@@ -402,35 +424,18 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
                           const pageNum = i + 1;
                           return (
                             <button
-                              key={pageNum}
+                              key={`page-${pageNum}`}
                               onClick={() => handlePageChange(pageNum)}
-                              className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
-                                page === pageNum
-                                  ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                  : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                              className={`relative z-10 inline-flex items-center px-4 py-2 text-sm font-semibold focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${
+                                pageNum === page
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50'
                               }`}
                             >
                               {pageNum}
                             </button>
                           );
                         })}
-                        {totalPages > 5 && (
-                          <>
-                            <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300">
-                              ...
-                            </span>
-                            <button
-                              onClick={() => handlePageChange(totalPages)}
-                              className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
-                                page === totalPages
-                                  ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                  : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
-                              }`}
-                            >
-                              {totalPages}
-                            </button>
-                          </>
-                        )}
                         <button
                           onClick={() => handlePageChange(page + 1)}
                           disabled={page === totalPages}
@@ -446,63 +451,85 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
               )}
             </>
           ) : (
-            <table className="min-w-full bg-white">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Quantity
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reference
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reason
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Notes
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredMovements.map((movement) => (
-                  <tr key={movement.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                      {formatNZDate(movement.movement_date)}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                      {getMovementTypeLabel(movement.movement_type)}
-                    </td>
-                    <td className={`px-4 py-2 whitespace-nowrap text-sm font-medium ${movement.quantity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {movement.quantity > 0 ? `+${movement.quantity}` : movement.quantity}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">
-                      {movement.reference_id ? (
-                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                          {movement.reference_id}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                      {getReasonLabel(movement.reason)}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500 max-w-xs truncate">
-                      {movement.notes || '-'}
-                    </td>
+            <>
+              <table className="min-w-full bg-white">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Quantity
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Reference
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Reason
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Notes
+                    </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredMovements.map((movement, index) => (
+                    <tr key={`${movement.id || index}`} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                        {formatNZDate(movement.movement_date)}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                        {getMovementTypeLabel(movement.movement_type)}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                        {movement.quantity}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                        {movement.reference_id || '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                        {getReasonLabel(movement.reason)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gray-500">
+                        {movement.notes || '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500 text-center">
+                        {movement.id && (
+                          <button
+                            onClick={() => setEditingMovementId(movement.id || null)}
+                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex items-center mx-auto"
+                            title="Edit movement"
+                          >
+                            <Edit size={12} className="mr-1" />
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
+        
+        {/* Edit Movement Modal */}
+        {editingMovementId && (
+          <EditMovementModal
+            movementId={editingMovementId}
+            onClose={() => setEditingMovementId(null)}
+            onSuccess={handleEditSuccess}
+          />
+        )}
       </div>
     </div>
   );
 };
 
-export default StockMovementModal; 
+export default StockMovementModal;

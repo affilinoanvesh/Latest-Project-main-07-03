@@ -3,9 +3,10 @@ import {
   StockMovement, 
   StockReconciliation, 
   StockReconciliationSummary,
-  MovementType
+  MovementType,
+  Order
 } from '../../../types';
-import { productsService, productVariationsService } from '../../../services';
+import { productsService, productVariationsService, settingsService, ordersService } from '../../../services';
 
 /**
  * Add a new stock movement record
@@ -37,18 +38,63 @@ export async function addStockMovement(movement: Omit<StockMovement, 'id' | 'cre
 }
 
 /**
- * Get stock movements by SKU
+ * Get stock movements by SKU, respecting the exclude on-hold orders setting
  */
 export async function getStockMovementsBySku(sku: string): Promise<StockMovement[]> {
   try {
-    const { data, error } = await supabase
+    // Check if we should exclude on-hold orders
+    const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+    
+    // If we're not excluding on-hold orders, just get all movements
+    if (!excludeOnHold) {
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .select('*')
+        .eq('sku', sku)
+        .order('movement_date', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    }
+    
+    // If we are excluding on-hold orders, we need to rebuild the movements
+    // First, get all non-sale movements (initial, adjustment, purchase)
+    const { data: nonSaleMovements, error: nonSaleError } = await supabase
       .from('stock_movements')
       .select('*')
       .eq('sku', sku)
+      .neq('movement_type', 'sale')
       .order('movement_date', { ascending: false });
     
-    if (error) throw error;
-    return data || [];
+    if (nonSaleError) throw nonSaleError;
+    
+    // Now get all orders with this SKU that are NOT on-hold and are completed or processing
+    // The updated getOrdersWithSku function now filters for completed or processing status
+    const orders = await getOrdersWithSku(sku, true);
+    
+    // Create sale movements for each order
+    const saleMovements: StockMovement[] = [];
+    
+    for (const order of orders) {
+      // Find the line item with this SKU
+      const lineItem = order.line_items.find(item => item.sku === sku);
+      if (!lineItem) continue;
+      
+      // Create a sale movement
+      saleMovements.push({
+        sku,
+        product_id: lineItem.product_id,
+        variation_id: lineItem.variation_id,
+        movement_date: order.date_completed || order.date_created || new Date(),
+        quantity: -Math.abs(lineItem.quantity),
+        movement_type: 'sale',
+        reference_id: order.number,
+        notes: `Order #${order.number}`
+      });
+    }
+    
+    // Combine non-sale movements with sale movements
+    return [...nonSaleMovements, ...saleMovements];
   } catch (error) {
     console.error('Error getting stock movements by SKU:', error);
     throw error;
@@ -56,18 +102,54 @@ export async function getStockMovementsBySku(sku: string): Promise<StockMovement
 }
 
 /**
- * Get stock movements by type
+ * Get stock movements by type, respecting the exclude on-hold orders setting
  */
 export async function getStockMovementsByType(type: MovementType): Promise<StockMovement[]> {
   try {
-    const { data, error } = await supabase
-      .from('stock_movements')
-      .select('*')
-      .eq('movement_type', type)
-      .order('movement_date', { ascending: false });
+    // Check if we should exclude on-hold orders
+    const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
     
-    if (error) throw error;
-    return data || [];
+    // If we're not excluding on-hold orders or this isn't a sale movement, just get all movements
+    if (!excludeOnHold || type !== 'sale') {
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .select('*')
+        .eq('movement_type', type)
+        .order('movement_date', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    }
+    
+    // If we are excluding on-hold orders and this is a sale movement, we need to rebuild the movements
+    // Get all orders that are NOT on-hold
+    const orders = await ordersService.getAll();
+    
+    // Create sale movements for each order
+    const saleMovements: StockMovement[] = [];
+    
+    for (const order of orders) {
+      // Skip orders that are not completed or processing
+      if (order.status !== 'completed' && order.status !== 'processing') continue;
+      
+      for (const lineItem of order.line_items) {
+        if (!lineItem.sku) continue;
+        
+        // Create a sale movement
+        saleMovements.push({
+          sku: lineItem.sku,
+          product_id: lineItem.product_id,
+          variation_id: lineItem.variation_id,
+          movement_date: order.date_completed || order.date_created || new Date(),
+          quantity: -Math.abs(lineItem.quantity),
+          movement_type: 'sale',
+          reference_id: order.number,
+          notes: `Order #${order.number}`
+        });
+      }
+    }
+    
+    return saleMovements;
   } catch (error) {
     console.error('Error getting stock movements by type:', error);
     throw error;
@@ -75,17 +157,63 @@ export async function getStockMovementsByType(type: MovementType): Promise<Stock
 }
 
 /**
- * Get all stock movements
+ * Get all stock movements, respecting the exclude on-hold orders setting
  */
 export async function getAllStockMovements(): Promise<StockMovement[]> {
   try {
-    const { data, error } = await supabase
+    // Check if we should exclude on-hold orders
+    const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+    
+    // If we're not excluding on-hold orders, just get all movements
+    if (!excludeOnHold) {
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .select('*')
+        .order('movement_date', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    }
+    
+    // If we are excluding on-hold orders, we need to rebuild the movements
+    // First, get all non-sale movements (initial, adjustment, purchase)
+    const { data: nonSaleMovements, error: nonSaleError } = await supabase
       .from('stock_movements')
       .select('*')
+      .neq('movement_type', 'sale')
       .order('movement_date', { ascending: false });
     
-    if (error) throw error;
-    return data || [];
+    if (nonSaleError) throw nonSaleError;
+    
+    // Now get all orders that are NOT on-hold
+    const orders = await ordersService.getAll();
+    
+    // Create sale movements for each order
+    const saleMovements: StockMovement[] = [];
+    
+    for (const order of orders) {
+      // Skip orders that are not completed or processing
+      if (order.status !== 'completed' && order.status !== 'processing') continue;
+      
+      for (const lineItem of order.line_items) {
+        if (!lineItem.sku) continue;
+        
+        // Create a sale movement
+        saleMovements.push({
+          sku: lineItem.sku,
+          product_id: lineItem.product_id,
+          variation_id: lineItem.variation_id,
+          movement_date: order.date_completed || order.date_created || new Date(),
+          quantity: -Math.abs(lineItem.quantity),
+          movement_type: 'sale',
+          reference_id: order.number,
+          notes: `Order #${order.number}`
+        });
+      }
+    }
+    
+    // Combine non-sale movements with sale movements
+    return [...nonSaleMovements, ...saleMovements];
   } catch (error) {
     console.error('Error getting all stock movements:', error);
     throw error;
@@ -93,12 +221,37 @@ export async function getAllStockMovements(): Promise<StockMovement[]> {
 }
 
 /**
- * Add a stock reconciliation record
+ * Get orders that contain a specific SKU, with option to exclude on-hold orders
+ */
+export async function getOrdersWithSku(sku: string, excludeOnHold: boolean = false): Promise<Order[]> {
+  try {
+    // Get all orders
+    const allOrders = await ordersService.getAll();
+    
+    // Filter orders to only include those with the specified SKU
+    return allOrders.filter(order => {
+      // If we're excluding on-hold orders and this order is on-hold, skip it
+      if (excludeOnHold && order.status === 'on-hold') return false;
+      
+      // Only include completed or processing orders (similar to processOrderStockMovements)
+      if (order.status !== 'completed' && order.status !== 'processing') return false;
+      
+      // Check if any line item has the specified SKU
+      return order.line_items.some(item => item.sku === sku);
+    });
+  } catch (error) {
+    console.error(`Error getting orders with SKU ${sku}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Add a new stock reconciliation record
  */
 export async function addStockReconciliation(reconciliation: Omit<StockReconciliation, 'id' | 'created_at'>): Promise<number> {
   try {
     const { data, error } = await supabase
-      .from('stock_reconciliation')
+      .from('stock_reconciliations')
       .insert({
         ...reconciliation,
         created_at: new Date()
@@ -107,6 +260,10 @@ export async function addStockReconciliation(reconciliation: Omit<StockReconcili
       .single();
     
     if (error) throw error;
+    
+    // Invalidate cache since data has changed
+    invalidateReconciliationCache();
+    
     return data.id;
   } catch (error) {
     console.error('Error adding stock reconciliation:', error);
@@ -115,23 +272,30 @@ export async function addStockReconciliation(reconciliation: Omit<StockReconcili
 }
 
 /**
- * Get the latest stock reconciliation for a SKU
+ * Get the latest reconciliation for a SKU
  */
 export async function getLatestReconciliationBySku(sku: string): Promise<StockReconciliation | null> {
   try {
     const { data, error } = await supabase
-      .from('stock_reconciliation')
+      .from('stock_reconciliations')
       .select('*')
       .eq('sku', sku)
       .order('reconciliation_date', { ascending: false })
       .limit(1)
       .single();
     
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "No rows returned" error
-    return data || null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No reconciliation found
+        return null;
+      }
+      throw error;
+    }
+    
+    return data;
   } catch (error) {
-    console.error('Error getting latest reconciliation by SKU:', error);
-    throw error;
+    console.error('Error getting latest reconciliation:', error);
+    return null;
   }
 }
 
@@ -155,50 +319,27 @@ export async function calculateExpectedStock(sku: string): Promise<number> {
 }
 
 /**
- * Get actual stock quantity for a SKU
+ * Get actual stock for a SKU from the inventory
  */
 export async function getActualStock(sku: string): Promise<number> {
   try {
-    console.log(`Getting actual stock for SKU: ${sku}`);
-    
-    // Use a single query to check both products and variations
-    // This reduces the number of API calls
-    const { data: variationData, error: variationError } = await supabase
-      .from('product_variations')
-      .select('stock_quantity')
-      .eq('sku', sku)
-      .maybeSingle();
-    
-    if (variationData) {
-      console.log(`Found variation with SKU ${sku}, stock: ${variationData.stock_quantity || 0}`);
-      return variationData.stock_quantity || 0;
+    // First try to find by SKU in products
+    const product = await productsService.getProductBySku(sku);
+    if (product && product.stock_quantity !== undefined) {
+      return product.stock_quantity;
     }
     
-    if (variationError && variationError.code !== 'PGRST116') {
-      console.error(`Error fetching variation by SKU ${sku}:`, variationError);
+    // If not found in products, try variations
+    const variation = await productVariationsService.getVariationBySku(sku);
+    if (variation && variation.stock_quantity !== undefined) {
+      return variation.stock_quantity;
     }
     
-    // If not found in variations, check products
-    const { data: productData, error: productError } = await supabase
-      .from('products')
-      .select('stock_quantity')
-      .eq('sku', sku)
-      .maybeSingle();
-    
-    if (productData) {
-      console.log(`Found product with SKU ${sku}, stock: ${productData.stock_quantity || 0}`);
-      return productData.stock_quantity || 0;
-    }
-    
-    if (productError && productError.code !== 'PGRST116') {
-      console.error(`Error fetching product by SKU ${sku}:`, productError);
-    }
-    
-    console.log(`No product or variation found for SKU ${sku}, returning 0`);
+    // If not found in either, return 0
     return 0;
   } catch (error) {
-    console.error(`Error getting actual stock for SKU ${sku}:`, error);
-    return 0; // Return 0 instead of throwing to prevent cascading errors
+    console.error('Error getting actual stock:', error);
+    return 0;
   }
 }
 
@@ -356,10 +497,19 @@ let lastCacheTime: number = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 /**
+ * Invalidate the reconciliation cache
+ */
+export function invalidateReconciliationCache(): void {
+  console.log('Invalidating reconciliation cache');
+  reconciliationCache = null;
+  lastCacheTime = 0;
+}
+
+/**
  * Get the timestamp of when the cache was last updated
  */
-export function getLastCacheTime(): number {
-  return lastCacheTime;
+export function getLastCacheTime(): number | null {
+  return lastCacheTime || null;
 }
 
 /**
@@ -436,15 +586,6 @@ export async function generateAllReconciliationSummaries(forceRefresh = false): 
     console.error('Error generating all reconciliation summaries:', error);
     return reconciliationCache || []; // Return cached data if available, otherwise empty array
   }
-}
-
-/**
- * Invalidate the reconciliation cache
- */
-export function invalidateReconciliationCache(): void {
-  console.log('Invalidating reconciliation cache');
-  reconciliationCache = null;
-  lastCacheTime = 0;
 }
 
 /**
@@ -653,5 +794,111 @@ export async function cleanupAllSaleMovements(): Promise<{ removed: number, erro
       removed: 0, 
       error: error.message || 'Unknown error' 
     };
+  }
+}
+
+/**
+ * Get reconciliation history for a specific SKU
+ */
+export async function getReconciliationHistoryBySku(sku: string): Promise<StockReconciliation[]> {
+  try {
+    const { data, error } = await supabase
+      .from('stock_reconciliations')
+      .select('*')
+      .eq('sku', sku)
+      .order('reconciliation_date', { ascending: false });
+    
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error getting reconciliation history:', error);
+    return [];
+  }
+}
+
+/**
+ * Update a stock reconciliation record
+ */
+export async function updateStockReconciliation(id: number, updates: Partial<StockReconciliation>): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('stock_reconciliations')
+      .update(updates)
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    // Invalidate cache since data has changed
+    invalidateReconciliationCache();
+  } catch (error) {
+    console.error('Error updating stock reconciliation:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get a stock movement by ID
+ */
+export async function getStockMovementById(id: number): Promise<StockMovement | null> {
+  try {
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No movement found
+        return null;
+      }
+      throw error;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error getting stock movement by ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Update a stock movement
+ */
+export async function updateStockMovement(id: number, updates: Partial<StockMovement>): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('stock_movements')
+      .update(updates)
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    // Invalidate cache since data has changed
+    invalidateReconciliationCache();
+  } catch (error) {
+    console.error('Error updating stock movement:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a stock movement
+ */
+export async function deleteStockMovement(id: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('stock_movements')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    // Invalidate cache since data has changed
+    invalidateReconciliationCache();
+  } catch (error) {
+    console.error('Error deleting stock movement:', error);
+    throw error;
   }
 } 

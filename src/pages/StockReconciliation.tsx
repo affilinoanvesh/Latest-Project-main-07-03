@@ -5,7 +5,10 @@ import {
   Search, 
   AlertTriangle,
   FileText,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  Info
 } from 'lucide-react';
 import { 
   StockReconciliationSummary, 
@@ -30,6 +33,8 @@ import { saveAdditionalRevenue } from '../db/operations/additionalRevenue';
 import { saveExpense } from '../db/operations/expenses';
 import { getAdditionalRevenueCategories } from '../db/operations/additionalRevenue';
 import { getExpenseCategories } from '../db/operations/expenses';
+import { settingsService, ordersService } from '../services';
+import { processMultipleOrdersStockMovements } from '../db/operations/orders/processOrderStockMovements';
 
 // Import components
 import StockReconciliationTable from '../components/stockReconciliation/StockReconciliationTable';
@@ -38,6 +43,7 @@ import StockAdjustmentModal from '../components/stockReconciliation/StockAdjustm
 import ReconciliationModal from '../components/stockReconciliation/ReconciliationModal';
 import InitialStockModal from '../components/stockReconciliation/InitialStockModal';
 import ReconciliationReport from '../components/stockReconciliation/ReconciliationReport';
+import ReconciliationHistoryModal from '../components/stockReconciliation/ReconciliationHistoryModal';
 
 const StockReconciliation: React.FC = () => {
   // UI state
@@ -45,6 +51,7 @@ const StockReconciliation: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [discrepancyFilter, setDiscrepancyFilter] = useState<'all' | 'with_discrepancy' | 'no_discrepancy'>('all');
+  const [showHelp, setShowHelp] = useState(false);
   
   // Modal state
   const [showMovementModal, setShowMovementModal] = useState(false);
@@ -52,6 +59,7 @@ const StockReconciliation: React.FC = () => {
   const [showReconciliationModal, setShowReconciliationModal] = useState(false);
   const [showInitialStockModal, setShowInitialStockModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showReconciliationHistoryModal, setShowReconciliationHistoryModal] = useState(false);
   
   // Selected item for modals
   const [selectedItem, setSelectedItem] = useState<StockReconciliationSummary | null>(null);
@@ -74,6 +82,9 @@ const StockReconciliation: React.FC = () => {
     is_variation?: boolean;
     parent_name?: string;
   }>>([]);
+
+  // New state for excludeOnHoldOrders
+  const [excludeOnHoldOrders, setExcludeOnHoldOrders] = useState<boolean>(true);
 
   // Load data on initial page load
   useEffect(() => {
@@ -569,14 +580,119 @@ const StockReconciliation: React.FC = () => {
 
   // Handle refresh button click
   const handleRefresh = async () => {
-    // Force refresh data from the server
-    await loadData(true);
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Process all orders to create stock movements
+      const orders = await ordersService.getAll();
+      const result = await processMultipleOrdersStockMovements(orders);
+      
+      console.log(`Processed ${result.processed} orders for stock movements, ${result.failed} failed`);
+      
+      if (result.errors.length > 0) {
+        console.warn('Errors processing orders:', result.errors);
+      }
+      
+      // Force refresh data from the server
+      await loadData(true);
+    } catch (error: any) {
+      console.error('Error refreshing data:', error);
+      setError(error.message || 'Failed to refresh data');
+      setLoading(false);
+    }
+  };
+
+  // Load excludeOnHoldOrders setting
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+        setExcludeOnHoldOrders(excludeOnHold);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    };
+    
+    loadSettings();
+  }, []);
+
+  // Handle viewing reconciliation history
+  const handleViewReconciliationHistory = (sku: string) => {
+    const item = summaries.find(s => s.sku === sku);
+    if (item) {
+      setSelectedItem(item);
+      setSelectedSku(sku);
+      setShowReconciliationHistoryModal(true);
+    }
   };
 
   return (
     <div className="max-w-full mx-auto px-1 sm:px-2 py-4">
+      {/* Page header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Stock Reconciliation</h1>
+        <p className="text-gray-600 mb-2">
+          Track and manage your inventory with detailed stock movements and reconciliation.
+        </p>
+      </div>
+      
+      {/* Collapsible help section */}
+      <div className="mb-6">
+        <button 
+          onClick={() => setShowHelp(!showHelp)}
+          className="flex items-center w-full text-left p-3 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+        >
+          <Info className="h-5 w-5 text-blue-500 mr-2" />
+          <span className="text-blue-800 font-medium">How to Use Stock Reconciliation</span>
+          <span className="ml-auto">
+            {showHelp ? <ChevronDown className="h-5 w-5 text-blue-500" /> : <ChevronRight className="h-5 w-5 text-blue-500" />}
+          </span>
+        </button>
+        
+        {showHelp && (
+          <div className="mt-2 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+              <h3 className="text-sm font-medium text-yellow-800 mb-1">Important: How This Works With WooCommerce</h3>
+              <p className="text-xs text-yellow-700">
+                This system tracks and records stock movements but does not directly modify your WooCommerce inventory. 
+                Actual stock levels are imported from WooCommerce. Use this tool to document and explain stock changes 
+                that have already occurred in your WooCommerce store.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm font-medium text-blue-700 mb-1">View Stock Movements</h3>
+                <p className="text-xs text-blue-600">
+                  Click the actions menu (three dots) and select "View Movements" to see all stock changes for a product.
+                </p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-blue-700 mb-1">Reconcile Stock</h3>
+                <p className="text-xs text-blue-600">
+                  Select "Reconcile" to record the current WooCommerce stock levels and document any discrepancies. Note: Actual stock is imported from WooCommerce and cannot be directly edited here.
+                </p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-blue-700 mb-1">Add Adjustments</h3>
+                <p className="text-xs text-blue-600">
+                  Use "Add Adjustment" to record stock changes for reasons like damage, theft, or corrections. These adjustments help track why stock levels changed in WooCommerce.
+                </p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-blue-700 mb-1">View Reconciliation History</h3>
+                <p className="text-xs text-blue-600">
+                  Select "Reconciliation History" to see past reconciliations and edit notes for better tracking.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Action buttons */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
-        <h1 className="text-xl font-bold">Stock Reconciliation</h1>
         <div className="flex flex-wrap gap-1">
           <button
             onClick={() => setShowInitialStockModal(true)}
@@ -597,10 +713,10 @@ const StockReconciliation: React.FC = () => {
             onClick={handleRefresh}
             className={`flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs`}
             disabled={loading}
-            title="Refresh data from the server"
+            title="Process orders and refresh data from the server"
           >
             <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Refreshing...' : 'Refresh from Server'}
+            {loading ? 'Processing...' : 'Process Orders & Refresh'}
           </button>
           <button
             onClick={handleGenerateReport}
@@ -620,7 +736,7 @@ const StockReconciliation: React.FC = () => {
             <p className="font-medium">Error loading data</p>
             <p>{error}</p>
             {summaries.length > 0 && lastUpdated && (
-              <p className="mt-0.5">Showing cached data from {formatDateTime(lastUpdated)}</p>
+              <p className="mt-0.5">Showing cached data from <span className="font-medium">{formatDateTime(lastUpdated)}</span></p>
             )}
           </div>
         </div>
@@ -666,13 +782,8 @@ const StockReconciliation: React.FC = () => {
           
           {lastUpdated && (
             <div className="mt-1 flex items-center text-xs text-gray-500">
-              <Clock className="h-3 w-3 mr-1" />
-              Last updated: {formatDateTime(lastUpdated)}
-              {!loading && (
-                <span className="ml-2 text-xs text-blue-500 cursor-pointer hover:underline" onClick={handleRefresh}>
-                  (Click to refresh from server)
-                </span>
-              )}
+              <Clock className="h-3 w-3 mr-1 text-blue-600" />
+              <span>Stock Data Updated: <span className="text-blue-600 font-medium">{formatDateTime(lastUpdated)}</span> (after clicking "Process Orders & Refresh")</span>
             </div>
           )}
         </div>
@@ -683,6 +794,7 @@ const StockReconciliation: React.FC = () => {
           onViewMovements={handleViewMovements}
           onReconcile={handleReconcile}
           onAddAdjustment={handleAddAdjustment}
+          onViewReconciliationHistory={handleViewReconciliationHistory}
           loading={loading}
           isFiltered={searchTerm !== '' || discrepancyFilter !== 'all'}
         />
@@ -738,6 +850,16 @@ const StockReconciliation: React.FC = () => {
         <ReconciliationReport
           data={summaries}
           onClose={() => setShowReportModal(false)}
+        />
+      )}
+
+      {/* Reconciliation History Modal */}
+      {showReconciliationHistoryModal && selectedItem && (
+        <ReconciliationHistoryModal
+          sku={selectedItem.sku}
+          productName={selectedItem.product_name}
+          onClose={() => setShowReconciliationHistoryModal(false)}
+          onRefresh={() => loadData(true)}
         />
       )}
     </div>

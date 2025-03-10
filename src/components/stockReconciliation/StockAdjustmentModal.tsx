@@ -136,7 +136,7 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
           <div>
-            <h2 className="text-xl font-semibold">Manual Stock Adjustment</h2>
+            <h2 className="text-xl font-semibold">Record Stock Adjustment</h2>
             {sku && productName && (
               <p className="text-sm text-gray-600 mt-1">
                 Pre-selected: {productName} ({sku})
@@ -152,6 +152,15 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
         </div>
         
         <form onSubmit={handleSubmit} className="p-4 space-y-6">
+          <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
+            <div className="flex">
+              <AlertCircle className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700">
+                This records stock adjustments for tracking purposes. Note that this doesn't directly change your WooCommerce stock - it only documents the reasons for stock changes that happened in WooCommerce.
+              </p>
+            </div>
+          </div>
+          
           {/* Product Selection */}
           <ProductSelector
             products={products}
