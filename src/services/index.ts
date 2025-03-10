@@ -13,6 +13,7 @@ export { productExpiryService } from './expiryService';
 export { purchaseOrdersService, purchaseOrderItemsService } from './purchaseOrdersService';
 export { additionalRevenueService, additionalRevenueCategoriesService } from './additionalRevenueService';
 export { overheadCostsService } from './overheadService';
+export { settingsService } from './settingsService';
 
 // Export the base service class
 export { SupabaseService } from './supabaseService'; 

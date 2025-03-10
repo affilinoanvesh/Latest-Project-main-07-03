@@ -26,6 +26,8 @@ import ApiCredentialsSection from '../components/settings/ApiCredentialsSection'
 import OverheadCostsSection from '../components/settings/OverheadCostsSection';
 import SyncOptionsSection from '../components/settings/SyncOptionsSection';
 import SyncStatusSection from '../components/settings/SyncStatusSection';
+import OrderSettingsSection from '../components/settings/OrderSettingsSection';
+import { settingsService } from '../services';
 
 // Custom hook for operation state management
 const useOperationState = (initialState = false) => {
@@ -117,6 +119,9 @@ const Settings: React.FC = () => {
   // Generate years for selector (last 5 years)
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  
+  // Order settings state
+  const [excludeOnHoldOrders, setExcludeOnHoldOrders] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -148,6 +153,10 @@ const Settings: React.FC = () => {
           orders: syncTimes.orders || null,
           inventory: syncTimes.inventory || null
         });
+        
+        // Load order settings
+        const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+        setExcludeOnHoldOrders(excludeOnHold);
       } catch (error) {
         console.error('Error loading settings data:', error);
         setErrorMessage(formatErrorMessage(error, 'Failed to load settings data'));
@@ -217,6 +226,9 @@ const Settings: React.FC = () => {
         setCredentialsExist(true);
         setEditingCredentials(false);
       }
+      
+      // Save order settings
+      await settingsService.setExcludeOnHoldOrders(excludeOnHoldOrders);
       
       setSuccessMessage('Settings saved successfully');
       
@@ -496,6 +508,12 @@ const Settings: React.FC = () => {
         editingCredentials={editingCredentials}
         onEditCredentials={() => setEditingCredentials(true)}
         onApiCredentialsChange={handleApiCredentialsChange}
+      />
+      
+      {/* Order Settings Section */}
+      <OrderSettingsSection
+        excludeOnHoldOrders={excludeOnHoldOrders}
+        onExcludeOnHoldOrdersChange={setExcludeOnHoldOrders}
       />
       
       {/* Data Sync Section */}

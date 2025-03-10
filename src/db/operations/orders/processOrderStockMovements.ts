@@ -1,6 +1,7 @@
 import { Order, OrderItem } from '../../../types';
 import { addStockMovement, invalidateReconciliationCache, getStockMovementsBySku } from '../stockReconciliation';
 import { supabase } from '../../../services/supabase';
+import { settingsService } from '../../../services';
 
 /**
  * Process an order and create stock movements for each line item
@@ -9,6 +10,15 @@ import { supabase } from '../../../services/supabase';
 export async function processOrderStockMovements(order: Order): Promise<void> {
   try {
     console.log(`Processing stock movements for order #${order.number}`);
+    
+    // Check if we should exclude on-hold orders
+    const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+    
+    // Skip on-hold orders if the setting is enabled
+    if (excludeOnHold && order.status === 'on-hold') {
+      console.log(`Skipping on-hold order #${order.number} as per settings`);
+      return;
+    }
     
     // Only process completed orders
     if (order.status !== 'completed' && order.status !== 'processing') {
@@ -84,24 +94,37 @@ export async function processMultipleOrdersStockMovements(orders: Order[]): Prom
   failed: number;
   errors: Array<{ order: string; error: string }>;
 }> {
-  const result = {
-    processed: 0,
-    failed: 0,
-    errors: [] as Array<{ order: string; error: string }>
-  };
-  
-  for (const order of orders) {
-    try {
-      await processOrderStockMovements(order);
-      result.processed++;
-    } catch (error: any) {
-      result.failed++;
-      result.errors.push({
-        order: order.number,
-        error: error.message || 'Unknown error'
-      });
+  try {
+    // Check if we should exclude on-hold orders
+    const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+    
+    // Filter out on-hold orders if the setting is enabled
+    const filteredOrders = excludeOnHold 
+      ? orders.filter(order => order.status !== 'on-hold')
+      : orders;
+    
+    const result = {
+      processed: 0,
+      failed: 0,
+      errors: [] as Array<{ order: string; error: string }>
+    };
+    
+    for (const order of filteredOrders) {
+      try {
+        await processOrderStockMovements(order);
+        result.processed++;
+      } catch (error: any) {
+        result.failed++;
+        result.errors.push({
+          order: order.number,
+          error: error.message || 'Unknown error'
+        });
+      }
     }
+    
+    return result;
+  } catch (error: any) {
+    console.error('Error processing multiple orders:', error);
+    throw error;
   }
-  
-  return result;
 } 

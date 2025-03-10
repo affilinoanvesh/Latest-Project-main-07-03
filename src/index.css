@@ -7,3 +7,46 @@
     font-family: 'Poppins', sans-serif;
   }
 }
+
+/* Sticky table headers */
+.overflow-x-auto {
+  position: relative;
+  /* Apply these properties to all overflow-x-auto containers for better compatibility */
+  max-height: calc(100vh - 200px); /* Adjust based on your layout */
+  overflow-y: auto;
+}
+
+/* Make table headers sticky */
+table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Set explicit background colors for table headers */
+table thead {
+  background-color: #f9fafb; /* Default bg-gray-50 color */
+}
+
+table thead.bg-gray-100,
+table thead tr.bg-gray-100 {
+  background-color: #f3f4f6; /* bg-gray-100 color */
+}
+
+/* Add a subtle shadow to the sticky header for better visual separation */
+table thead::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Add a class for tables with fixed headers */
+.table-fixed-header {
+  position: relative;
+  border-collapse: separate;
+  border-spacing: 0;
+}

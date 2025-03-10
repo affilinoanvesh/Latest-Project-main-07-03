@@ -2,6 +2,7 @@ import React, { useEffect, createContext, useState, useContext } from 'react';
 import { HashRouter as Router, Routes, Route, Outlet } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import TimeDisplay from './components/common/TimeDisplay';
+import TableScrollHelper from './components/common/TableScrollHelper';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import Products from './pages/Products';
@@ -114,6 +115,7 @@ const AppLayout = () => {
           <Outlet />
         </div>
       </div>
+      <TableScrollHelper />
     </div>
   );
 };

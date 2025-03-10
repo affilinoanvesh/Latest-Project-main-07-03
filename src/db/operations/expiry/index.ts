@@ -227,6 +227,7 @@ export async function getProductExpiryWithDetails(): Promise<ProductExpiry[]> {
         }
       }
       
+      // Return the record without setting the archived property
       return {
         ...record,
         product_name: productName,
@@ -317,25 +318,25 @@ export async function deleteProductExpiryByBatchAndSku(batchNumber: string, sku:
 
 /**
  * Archive a product expiry record
- * This is a no-op since the archived column doesn't exist in the database
+ * This is a no-op since we're not using this functionality anymore
  */
 export async function archiveProductExpiry(id: number): Promise<void> {
-  console.log('Archive functionality is not available - archived column does not exist in the database');
+  console.log('Archive functionality is not used in this application');
   // No-op
 }
 
 /**
  * Unarchive a product expiry record
- * This is a no-op since the archived column doesn't exist in the database
+ * This is a no-op since we're not using this functionality anymore
  */
 export async function unarchiveProductExpiry(id: number): Promise<void> {
-  console.log('Unarchive functionality is not available - archived column does not exist in the database');
+  console.log('Unarchive functionality is not used in this application');
   // No-op
 }
 
 /**
  * Get archived product expiry records
- * This returns all records since the archived column doesn't exist in the database
+ * This returns all records since we're not using archive functionality anymore
  */
 export async function getArchivedProductExpiry(): Promise<ProductExpiry[]> {
   try {

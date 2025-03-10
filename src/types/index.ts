@@ -35,7 +35,6 @@ export interface ProductExpiry {
   notes?: string;
   created_at: Date;
   updated_at: Date;
-  archived?: boolean;
 }
 
 export interface Product {

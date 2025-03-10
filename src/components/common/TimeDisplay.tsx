@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Clock } from 'lucide-react';
 import { formatNZDate, formatRelativeTime, getCurrentNZDate } from '../../utils/dateUtils';
 import { syncService } from '../../services';
 
@@ -60,32 +60,47 @@ const TimeDisplay: React.FC<TimeDisplayProps> = ({ className = '' }) => {
   const orderSync = getSyncInfo('orders');
   const inventorySync = getSyncInfo('inventory');
 
+  // Format the exact date and time for orders
+  const formatExactTime = (date?: Date): string => {
+    if (!date) return 'Never';
+    return new Intl.DateTimeFormat('en-NZ', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).format(date);
+  };
+
   return (
     <div className={`text-sm ${className}`}>
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div className="font-medium text-gray-800">Current Time (NZ): {formatNZDate(currentTime)}</div>
         
-        <div className="flex space-x-6">
-          {productSync && (
-            <div className="flex items-center text-gray-600">
-              <RefreshCw size={14} className="mr-1" />
-              <span>Products: {formatRelativeTime(productSync.timestamp)}</span>
-            </div>
-          )}
-          
+        <div className="flex flex-wrap gap-4">
           {orderSync && (
-            <div className="flex items-center text-gray-600">
-              <RefreshCw size={14} className="mr-1" />
-              <span>Orders: {formatRelativeTime(orderSync.timestamp)}</span>
+            <div className="flex items-center text-gray-700 font-medium">
+              <Clock size={16} className="mr-1 text-blue-600" />
+              <span>Orders Updated: <span className="text-blue-600">{formatExactTime(orderSync.timestamp)}</span> ({formatRelativeTime(orderSync.timestamp)})</span>
             </div>
           )}
           
-          {inventorySync && (
-            <div className="flex items-center text-gray-600">
-              <RefreshCw size={14} className="mr-1" />
-              <span>Inventory: {formatRelativeTime(inventorySync.timestamp)}</span>
-            </div>
-          )}
+          <div className="flex space-x-4">
+            {productSync && (
+              <div className="flex items-center text-gray-600">
+                <RefreshCw size={14} className="mr-1" />
+                <span>Products: {formatRelativeTime(productSync.timestamp)}</span>
+              </div>
+            )}
+            
+            {inventorySync && (
+              <div className="flex items-center text-gray-600">
+                <RefreshCw size={14} className="mr-1" />
+                <span>Inventory: {formatRelativeTime(inventorySync.timestamp)}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

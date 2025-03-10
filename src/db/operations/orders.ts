@@ -1,13 +1,11 @@
-import { db } from '../schema';
 import { Order } from '../../types';
 import { updateLastSync } from './sync';
+import { settingsService, ordersService } from '../../services';
 
 export async function saveOrders(orders: Order[]): Promise<void> {
   try {
-    await db.transaction('rw', db.orders, async () => {
-      await db.orders.clear();
-      await db.orders.bulkAdd(orders);
-    });
+    await ordersService.deleteAll();
+    await ordersService.bulkAdd(orders);
     await updateLastSync('orders');
   } catch (error) {
     console.error('Error saving orders:', error);
@@ -17,9 +15,8 @@ export async function saveOrders(orders: Order[]): Promise<void> {
 
 export async function getOrders(): Promise<Order[]> {
   try {
-    // Ensure the database is initialized before accessing
-    await db.initializeDatabase();
-    return await db.orders.toArray();
+    const allOrders = await ordersService.getAll();
+    return allOrders;
   } catch (error) {
     console.error('Error getting orders:', error);
     return [];
