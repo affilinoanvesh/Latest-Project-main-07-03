@@ -3,11 +3,9 @@ import {
   RefreshCw, 
   Plus, 
   Search, 
-  Filter,
   AlertTriangle,
   FileText,
-  Clock,
-  BarChart2
+  Clock
 } from 'lucide-react';
 import { 
   StockReconciliationSummary, 
@@ -19,8 +17,7 @@ import {
   getStockMovementsBySku,
   addStockMovement,
   performReconciliation,
-  getLastCacheTime,
-  cleanupAllSaleMovements
+  getLastCacheTime
 } from '../db/operations/stockReconciliation';
 import { processStockImportCsv } from '../utils/csv/stockImport';
 import { formatDateTime } from '../utils/formatters';
@@ -72,63 +69,72 @@ const StockReconciliation: React.FC = () => {
     parent_name?: string;
   }>>([]);
 
-  // Load data on initial page load only if no data exists
+  // Load data on initial page load
   useEffect(() => {
-    if (!dataLoaded && summaries.length === 0) {
-      // Only load data on first load if we don't have any data
-      loadData(false);
+    // Try to load cached data from localStorage first
+    const cachedSummaries = localStorage.getItem('stockReconciliationSummaries');
+    const cachedProducts = localStorage.getItem('stockReconciliationProducts');
+    const cachedLastUpdated = localStorage.getItem('stockReconciliationLastUpdated');
+    
+    if (cachedSummaries && cachedProducts) {
+      try {
+        const parsedSummaries = JSON.parse(cachedSummaries);
+        const parsedProducts = JSON.parse(cachedProducts);
+        
+        setSummaries(parsedSummaries);
+        setFilteredSummaries(parsedSummaries);
+        setProducts(parsedProducts);
+        setDataLoaded(true);
+        setLoading(false); // Ensure loading is set to false when using cached data
+        
+        if (cachedLastUpdated) {
+          setLastUpdated(new Date(cachedLastUpdated));
+        }
+        
+        // Still load fresh data in the background, but don't show loading indicator
+        loadDataSilently(false);
+      } catch (error) {
+        console.error('Error parsing cached data:', error);
+        // If there's an error parsing the cached data, load fresh data
+        loadData(false);
+      }
     } else {
-      // If we already have data, just set dataLoaded to true
-      setDataLoaded(true);
+      // If no cached data is available, load fresh data
+      loadData(false);
     }
   }, []);
+
+  // Save data to localStorage when it changes
+  useEffect(() => {
+    if (summaries.length > 0 && products.length > 0) {
+      localStorage.setItem('stockReconciliationSummaries', JSON.stringify(summaries));
+      localStorage.setItem('stockReconciliationProducts', JSON.stringify(products));
+      if (lastUpdated) {
+        localStorage.setItem('stockReconciliationLastUpdated', lastUpdated.toISOString());
+      }
+    }
+  }, [summaries, products, lastUpdated]);
 
   // Filter data when search term or filter changes
   useEffect(() => {
     filterData();
   }, [summaries, searchTerm, discrepancyFilter]);
 
-  // Load reconciliation data
-  const loadData = async (forceRefresh = false) => {
+  // Load data without showing loading indicator
+  const loadDataSilently = async (forceRefresh = false) => {
     try {
-      setLoading(true);
+      // Don't set loading state
       setError(null);
-      console.log('Loading stock reconciliation data...');
+      
+      let dataWasRefreshed = false;
       
       // Only load products if forceRefresh is true or products array is empty
       if (forceRefresh || products.length === 0) {
-        // Load both products and variations
         try {
           const [allProducts, allVariations] = await Promise.all([
             productsService.getAll(),
             productVariationsService.getAll()
           ]);
-          
-          console.log(`Loaded ${allProducts.length} products and ${allVariations.length} variations`);
-          
-          // Check if we have any variations at all
-          if (allVariations.length === 0) {
-            console.warn('No variations found! This might indicate an issue with the productVariationsService.');
-          }
-          
-          // Log some raw product data to check SKUs
-          if (allProducts.length > 0) {
-            console.log('Sample raw products:', allProducts.slice(0, 3).map(p => ({
-              id: p.id,
-              name: p.name,
-              sku: p.sku,
-              type: p.type
-            })));
-          }
-          
-          if (allVariations.length > 0) {
-            console.log('Sample raw variations:', allVariations.slice(0, 3).map(v => ({
-              id: v.id,
-              name: v.name,
-              sku: v.sku,
-              parent_id: v.parent_id
-            })));
-          }
           
           // Create a map of product IDs to names for variations
           const productNameMap = new Map();
@@ -138,7 +144,7 @@ const StockReconciliation: React.FC = () => {
           
           // Format products - include all products with SKUs, not just non-variable ones
           const formattedProducts = allProducts
-            .filter(product => !!product.sku) // Only filter out products without SKUs
+            .filter(product => !!product.sku)
             .map(product => ({
               sku: product.sku || '',
               name: product.name || '',
@@ -149,7 +155,7 @@ const StockReconciliation: React.FC = () => {
           
           // Format variations - make sure we're getting all variations with SKUs
           const formattedVariations = allVariations
-            .filter(variation => !!variation.sku) // Only filter out variations without SKUs
+            .filter(variation => !!variation.sku)
             .map(variation => ({
               sku: variation.sku || '',
               name: variation.name || '',
@@ -159,81 +165,119 @@ const StockReconciliation: React.FC = () => {
               parent_name: productNameMap.get(variation.parent_id) || ''
             }));
           
-          console.log(`Formatted ${formattedProducts.length} products and ${formattedVariations.length} variations`);
-          
-          // Check if we're losing variations in the filtering
-          if (allVariations.length > formattedVariations.length) {
-            console.log(`Warning: Filtered out ${allVariations.length - formattedVariations.length} variations without SKUs`);
-            console.log('Sample filtered out variations:', 
-              allVariations
-                .filter(v => !v.sku)
-                .slice(0, 3)
-                .map(v => ({id: v.id, name: v.name, parent_id: v.parent_id}))
-            );
-          }
-          
           // Combine products and variations
           const combinedProducts = [...formattedProducts, ...formattedVariations];
           
-          // Log some sample products to verify SKUs are present
-          if (combinedProducts.length > 0) {
-            console.log('Sample formatted products:', combinedProducts.slice(0, 5).map(p => ({
-              name: p.name,
-              sku: p.sku,
-              is_variation: p.is_variation
-            })));
-            
-            // Check for specific SKU patterns
-            const skuPatterns = ['bh', 'BH', '205', 'bh205', 'BH205', 'BH-205', 'bh-205'];
-            for (const pattern of skuPatterns) {
-              const matches = combinedProducts.filter(p => {
-                if (!p.sku) return false;
-                
-                // Try different matching approaches
-                const skuLower = p.sku.toLowerCase();
-                const patternLower = pattern.toLowerCase();
-                
-                // Direct includes
-                if (skuLower.includes(patternLower)) return true;
-                
-                // No separators version
-                const compactSku = skuLower.replace(/[\s\-_.]/g, '');
-                const compactPattern = patternLower.replace(/[\s\-_.]/g, '');
-                
-                return compactSku.includes(compactPattern);
-              });
-              
-              console.log(`Products with SKU containing "${pattern}":`, matches.length);
-              if (matches.length > 0) {
-                console.log('Sample matches:', matches.slice(0, 3).map(p => `${p.name} (${p.sku})`));
-              }
-            }
-          }
-          
           setProducts(combinedProducts);
+          dataWasRefreshed = true;
         } catch (err) {
-          console.error('Failed to load products:', err);
+          console.error('Failed to load products silently:', err);
         }
-      } else {
-        console.log('Skipping product loading - using existing products data');
       }
       
       // Only load reconciliation data if forceRefresh is true or summaries array is empty
       if (forceRefresh || summaries.length === 0) {
         const data = await generateAllReconciliationSummaries(forceRefresh);
-        console.log(`Loaded ${data.length} reconciliation summaries`);
-        
         setSummaries(data);
         setFilteredSummaries(data);
-      } else {
-        console.log('Skipping reconciliation data loading - using existing data');
+        dataWasRefreshed = true;
       }
       
       setDataLoaded(true);
       
-      // Update last updated timestamp
-      const cacheTime = getLastCacheTime();
-      setLastUpdated(cacheTime ? new Date(cacheTime) : new Date());
+      // Only update the lastUpdated timestamp if data was actually refreshed or if forceRefresh is true
+      if (forceRefresh || dataWasRefreshed) {
+        const cacheTime = getLastCacheTime();
+        setLastUpdated(cacheTime ? new Date(cacheTime) : new Date());
+      } else if (!lastUpdated) {
+        // If lastUpdated is null, set it to the cache time
+        const cacheTime = getLastCacheTime();
+        if (cacheTime) {
+          setLastUpdated(new Date(cacheTime));
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to load reconciliation data silently:', err);
+      // Don't show error for silent loading
+    }
+  };
+
+  // Load data with loading indicator
+  const loadData = async (forceRefresh = false) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      let dataWasRefreshed = false;
+      
+      // Only load products if forceRefresh is true or products array is empty
+      if (forceRefresh || products.length === 0) {
+        try {
+          const [allProducts, allVariations] = await Promise.all([
+            productsService.getAll(),
+            productVariationsService.getAll()
+          ]);
+          
+          // Create a map of product IDs to names for variations
+          const productNameMap = new Map();
+          allProducts.forEach(product => {
+            productNameMap.set(product.id, product.name);
+          });
+          
+          // Format products - include all products with SKUs, not just non-variable ones
+          const formattedProducts = allProducts
+            .filter(product => !!product.sku)
+            .map(product => ({
+              sku: product.sku || '',
+              name: product.name || '',
+              stock_quantity: product.stock_quantity || 0,
+              supplier_price: product.supplier_price || 0,
+              is_variation: false
+            }));
+          
+          // Format variations - make sure we're getting all variations with SKUs
+          const formattedVariations = allVariations
+            .filter(variation => !!variation.sku)
+            .map(variation => ({
+              sku: variation.sku || '',
+              name: variation.name || '',
+              stock_quantity: variation.stock_quantity || 0,
+              supplier_price: variation.supplier_price || 0,
+              is_variation: true,
+              parent_name: productNameMap.get(variation.parent_id) || ''
+            }));
+          
+          // Combine products and variations
+          const combinedProducts = [...formattedProducts, ...formattedVariations];
+          
+          setProducts(combinedProducts);
+          dataWasRefreshed = true;
+        } catch (err) {
+          console.error('Failed to load products:', err);
+        }
+      }
+      
+      // Only load reconciliation data if forceRefresh is true or summaries array is empty
+      if (forceRefresh || summaries.length === 0) {
+        const data = await generateAllReconciliationSummaries(forceRefresh);
+        setSummaries(data);
+        setFilteredSummaries(data);
+        dataWasRefreshed = true;
+      }
+      
+      setDataLoaded(true);
+      
+      // Only update the lastUpdated timestamp if data was actually refreshed or if forceRefresh is true
+      if (forceRefresh || dataWasRefreshed) {
+        const cacheTime = getLastCacheTime();
+        setLastUpdated(cacheTime ? new Date(cacheTime) : new Date());
+      } else if (!lastUpdated) {
+        // If lastUpdated is null, set it to the cache time
+        const cacheTime = getLastCacheTime();
+        if (cacheTime) {
+          setLastUpdated(new Date(cacheTime));
+        }
+      }
       
       setLoading(false);
     } catch (err: any) {
@@ -294,10 +338,34 @@ const StockReconciliation: React.FC = () => {
   };
 
   // Handle add adjustment
-  const handleAddAdjustment = (sku: string) => {
-    const item = summaries.find(s => s.sku === sku);
-    if (item) {
-      setSelectedItem(item);
+  const handleAddAdjustment = (sku: string = '') => {
+    console.log('handleAddAdjustment called with SKU:', sku);
+    console.log('Current summaries:', summaries);
+    
+    // If a specific SKU is provided (from row button), find that item
+    if (sku) {
+      const item = summaries.find(s => s.sku === sku);
+      console.log('Found item for SKU:', item);
+      
+      if (item) {
+        console.log('Setting selectedItem for adjustment:', item);
+        setSelectedItem(item);
+        
+        // Open the modal with the selected item
+        setShowAdjustmentModal(true);
+      } else {
+        console.log('No item found for SKU:', sku);
+        setSelectedItem(null);
+        
+        // Open the modal without a selected item
+        setShowAdjustmentModal(true);
+      }
+    } else {
+      // If no SKU provided (from general "Add Adjustment" button), don't preselect
+      console.log('No SKU provided, not preselecting any item');
+      setSelectedItem(null);
+      
+      // Open the modal without a selected item
       setShowAdjustmentModal(true);
     }
   };
@@ -347,8 +415,6 @@ const StockReconciliation: React.FC = () => {
         // Add metadata to notes for reporting purposes
         const metadataString = JSON.stringify(metadata);
         movementData.notes = `${movementData.notes || ''}\n[METADATA]${metadataString}`;
-        
-        console.log(`Adding expiry adjustment with metadata: ${metadataString}`);
       }
       
       // Add the stock movement
@@ -427,127 +493,123 @@ const StockReconciliation: React.FC = () => {
 
   // Handle refresh button click
   const handleRefresh = async () => {
+    // Force refresh data from the server
     await loadData(true);
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Stock Reconciliation</h1>
-        <div className="flex space-x-2">
+    <div className="max-w-full mx-auto px-1 sm:px-2 py-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+        <h1 className="text-xl font-bold">Stock Reconciliation</h1>
+        <div className="flex flex-wrap gap-1">
           <button
             onClick={() => setShowInitialStockModal(true)}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Initial Stock
+            <Plus className="h-3 w-3 mr-1" />
+            Add Initial
           </button>
           <button
-            onClick={() => handleAddAdjustment(filteredSummaries[0]?.sku || '')}
-            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-            disabled={filteredSummaries.length === 0}
-            title="Add adjustment for stock (damage, theft, expiry, etc.)"
+            onClick={() => handleAddAdjustment()}
+            className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs"
+            title="Add adjustment for any product (damage, theft, expiry, etc.)"
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-3 w-3 mr-1" />
             Add Adjustment
           </button>
           <button
             onClick={handleRefresh}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className={`flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs`}
             disabled={loading}
-            title="Update sales data from product reports and refresh stock reconciliation"
+            title="Refresh data from the server"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Refreshing...' : 'Refresh Data'}
+            <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Refreshing...' : 'Refresh from Server'}
           </button>
           <button
             onClick={handleGenerateReport}
-            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            className="flex items-center px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
           >
-            <FileText className="h-4 w-4 mr-2" />
-            Generate Report
+            <FileText className="h-3 w-3 mr-1" />
+            Report
           </button>
         </div>
       </div>
       
+      {/* Show error message if there's an error */}
       {error && (
-        <div className="mb-4 p-4 rounded-lg bg-red-100 text-red-700">
-          <p className="font-medium">Error:</p>
-          <p>{error}</p>
+        <div className="mb-2 p-2 rounded-lg bg-red-100 text-red-700 flex items-center text-xs">
+          <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Error loading data</p>
+            <p>{error}</p>
+            {summaries.length > 0 && lastUpdated && (
+              <p className="mt-0.5">Showing cached data from {formatDateTime(lastUpdated)}</p>
+            )}
+          </div>
         </div>
       )}
       
-      {!dataLoaded && (
-        <div className="mb-4 p-4 rounded-lg bg-yellow-100 text-yellow-800 flex items-center">
-          <AlertTriangle className="h-5 w-5 mr-2" />
-          <p>Click the "Refresh Data" button to load the latest stock data.</p>
+      {/* Only show the loading message if we're loading and don't have any data yet */}
+      {loading && summaries.length === 0 && (
+        <div className="mb-2 p-2 rounded-lg bg-yellow-100 text-yellow-800 flex items-center text-xs">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          <p>Loading stock reconciliation data... Please wait.</p>
         </div>
       )}
       
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-          <div className="flex items-center">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="p-2 border-b">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
+            <div className="relative w-full sm:w-auto">
+              <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                <Search className="h-3 w-3 text-gray-400" />
               </div>
               <input
                 type="text"
-                placeholder="Search by SKU or product name"
-                className="pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Search by SKU or name"
+                className="pl-7 pr-2 py-1 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 w-full sm:w-48 text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <select
-              className="ml-2 border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={discrepancyFilter}
-              onChange={(e) => setDiscrepancyFilter(e.target.value as any)}
-            >
-              <option value="all">All Products</option>
-              <option value="with_discrepancy">With Discrepancy</option>
-              <option value="no_discrepancy">No Discrepancy</option>
-            </select>
+            
+            <div className="flex items-center space-x-1">
+              <span className="text-xs text-gray-600">Filter:</span>
+              <select
+                value={discrepancyFilter}
+                onChange={(e) => setDiscrepancyFilter(e.target.value as any)}
+                className="border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+              >
+                <option value="all">All Items</option>
+                <option value="with_discrepancy">With Discrepancy</option>
+                <option value="no_discrepancy">No Discrepancy</option>
+              </select>
+            </div>
           </div>
           
           {lastUpdated && (
-            <div className="text-sm text-gray-500 flex items-center">
-              <Clock className="h-4 w-4 mr-1" />
+            <div className="mt-1 flex items-center text-xs text-gray-500">
+              <Clock className="h-3 w-3 mr-1" />
               Last updated: {formatDateTime(lastUpdated)}
+              {!loading && (
+                <span className="ml-2 text-xs text-blue-500 cursor-pointer hover:underline" onClick={handleRefresh}>
+                  (Click to refresh from server)
+                </span>
+              )}
             </div>
           )}
         </div>
         
-        {loading ? (
-          <div className="flex flex-col justify-center items-center py-12">
-            <RefreshCw className="h-8 w-8 text-gray-400 animate-spin mb-4" />
-            <p className="text-gray-500">Loading stock reconciliation data...</p>
-          </div>
-        ) : error ? (
-          <div className="bg-red-100 text-red-700 p-4 rounded-lg flex items-center">
-            <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
-            <div>
-              <p className="font-medium">Error loading data</p>
-              <p className="text-sm">{error}</p>
-              {summaries.length > 0 && lastUpdated && (
-                <p className="text-sm mt-1">Showing cached data from {formatDateTime(lastUpdated)}</p>
-              )}
-            </div>
-          </div>
-        ) : filteredSummaries.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            {searchTerm || discrepancyFilter !== 'all' 
-              ? 'No items match your search criteria' 
-              : 'No stock movements found. Add initial stock to get started.'}
-          </div>
-        ) : (
-          <StockReconciliationTable
-            data={filteredSummaries}
-            onViewMovements={handleViewMovements}
-            onReconcile={handleReconcile}
-            onAddAdjustment={handleAddAdjustment}
-          />
-        )}
+        {/* Always show the table */}
+        <StockReconciliationTable 
+          data={filteredSummaries}
+          onViewMovements={handleViewMovements}
+          onReconcile={handleReconcile}
+          onAddAdjustment={handleAddAdjustment}
+          loading={loading}
+          isFiltered={searchTerm !== '' || discrepancyFilter !== 'all'}
+        />
       </div>
       
       {/* Stock Movement Modal */}
@@ -560,16 +622,19 @@ const StockReconciliation: React.FC = () => {
       )}
       
       {/* Stock Adjustment Modal */}
-      {showAdjustmentModal && selectedItem && (
-        <StockAdjustmentModal
-          sku={selectedItem.sku}
-          productName={selectedItem.product_name}
-          currentStock={selectedItem.actual_stock}
-          onSubmit={handleSubmitAdjustment}
-          onClose={() => setShowAdjustmentModal(false)}
-          products={products}
-        />
-      )}
+      {showAdjustmentModal && (() => {
+        console.log('Rendering StockAdjustmentModal with selectedItem:', selectedItem);
+        return (
+          <StockAdjustmentModal
+            products={products}
+            onSubmit={handleSubmitAdjustment}
+            onClose={() => setShowAdjustmentModal(false)}
+            sku={selectedItem?.sku}
+            productName={selectedItem?.product_name}
+            currentStock={selectedItem?.actual_stock}
+          />
+        );
+      })()}
       
       {/* Reconciliation Modal */}
       {showReconciliationModal && selectedItem && (
