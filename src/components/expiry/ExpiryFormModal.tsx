@@ -250,8 +250,11 @@ const ExpiryFormModal: React.FC<ExpiryFormModalProps> = ({
         await addProductExpiry(expiryData);
       }
       
-      onSuccess();
-      onClose();
+      // Add a small delay to ensure database operations complete
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 500);
     } catch (error: any) {
       console.error('Error saving expiry data:', error);
       setError(error.message || 'Failed to save expiry data. Please try again.');

@@ -183,8 +183,17 @@ export async function addBulkProductExpiry(expiryData: Array<Omit<ProductExpiry,
  */
 export async function getProductExpiryWithDetails(): Promise<ProductExpiry[]> {
   try {
-    // Get all expiry records
-    const expiryRecords = await productExpiryService.getAll();
+    // Get all expiry records directly from Supabase to avoid caching issues
+    const { data: expiryRecords, error } = await supabase
+      .from('product_expiry')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching expiry records:', error);
+      throw error;
+    }
+    
+    console.log(`Retrieved ${expiryRecords?.length || 0} expiry records`);
     
     // Get all products and variations for enrichment
     const products = await productsService.getAll();
@@ -233,7 +242,7 @@ export async function getProductExpiryWithDetails(): Promise<ProductExpiry[]> {
 /**
  * Get product expiry records sorted by expiry date
  */
-export async function getProductExpiryByExpiryDate(ascending: boolean = true): Promise<ProductExpiry[]> {
+export async function getProductExpiryByExpiryDate(ascending: boolean = true, timestamp?: number): Promise<ProductExpiry[]> {
   try {
     // Get all expiry records with details
     const records = await getProductExpiryWithDetails();
@@ -302,6 +311,79 @@ export async function deleteProductExpiryByBatchAndSku(batchNumber: string, sku:
     }
   } catch (error) {
     console.error('Error deleting product expiry by batch and SKU:', error);
+    throw error;
+  }
+}
+
+/**
+ * Archive a product expiry record
+ * This is a no-op since the archived column doesn't exist in the database
+ */
+export async function archiveProductExpiry(id: number): Promise<void> {
+  console.log('Archive functionality is not available - archived column does not exist in the database');
+  // No-op
+}
+
+/**
+ * Unarchive a product expiry record
+ * This is a no-op since the archived column doesn't exist in the database
+ */
+export async function unarchiveProductExpiry(id: number): Promise<void> {
+  console.log('Unarchive functionality is not available - archived column does not exist in the database');
+  // No-op
+}
+
+/**
+ * Get archived product expiry records
+ * This returns all records since the archived column doesn't exist in the database
+ */
+export async function getArchivedProductExpiry(): Promise<ProductExpiry[]> {
+  try {
+    // Get all expiry records directly from Supabase
+    const { data: expiryRecords, error } = await supabase
+      .from('product_expiry')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching expiry records:', error);
+      throw error;
+    }
+    
+    return expiryRecords as ProductExpiry[];
+  } catch (error) {
+    console.error('Error getting product expiry:', error);
+    throw error;
+  }
+}
+
+/**
+ * Auto-archive expiry records for products with zero stock
+ * This is a no-op since the archived column doesn't exist in the database
+ */
+export async function autoArchiveExpiryForZeroStock(sku: string): Promise<void> {
+  console.log('Auto-archive functionality is not available - archived column does not exist in the database');
+  // No-op
+}
+
+/**
+ * Check if a product has any expiry records
+ */
+export async function hasUnarchivedExpiryRecords(sku: string): Promise<boolean> {
+  try {
+    // Get all expiry records for this SKU
+    const { data: records, error } = await supabase
+      .from('product_expiry')
+      .select('*')
+      .eq('sku', sku);
+    
+    if (error) {
+      console.error('Error checking for expiry records:', error);
+      throw error;
+    }
+    
+    return records.length > 0;
+  } catch (error) {
+    console.error('Error checking for expiry records:', error);
     throw error;
   }
 } 

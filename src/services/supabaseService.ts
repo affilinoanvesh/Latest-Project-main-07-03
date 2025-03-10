@@ -52,18 +52,37 @@ export class SupabaseService<T extends { id?: number }> {
    * Add a new record
    */
   async add(item: Omit<T, 'id'>): Promise<T> {
-    const { data, error } = await supabase
-      .from(this.tableName)
-      .insert(item)
-      .select()
-      .single();
+    try {
+      console.log(`[${this.tableName}] Adding new record:`, item);
+      
+      // Ensure created_at and updated_at are set if this table uses timestamps
+      const itemWithTimestamps = {
+        ...item
+      };
+      
+      // Add timestamps if the table supports them
+      if (this.tableName !== 'api_credentials') { // Skip for tables that don't have timestamps
+        (itemWithTimestamps as any).created_at = (item as any).created_at || new Date();
+        (itemWithTimestamps as any).updated_at = (item as any).updated_at || new Date();
+      }
+      
+      const { data, error } = await supabase
+        .from(this.tableName)
+        .insert(itemWithTimestamps)
+        .select()
+        .single();
 
-    if (error) {
-      console.error(`Error adding to ${this.tableName}:`, error);
-      throw error;
+      if (error) {
+        console.error(`Error adding to ${this.tableName}:`, error);
+        throw error;
+      }
+
+      console.log(`[${this.tableName}] Successfully added new record with ID ${(data as any).id}`);
+      return data as T;
+    } catch (err) {
+      console.error(`Unexpected error in add for ${this.tableName}:`, err);
+      throw err;
     }
-
-    return data as T;
   }
 
   /**
@@ -136,19 +155,30 @@ export class SupabaseService<T extends { id?: number }> {
    * Update a record
    */
   async update(id: number, changes: Partial<T>): Promise<T> {
-    const { data, error } = await supabase
-      .from(this.tableName)
-      .update(changes)
-      .eq('id', id)
-      .select()
-      .single();
+    try {
+      console.log(`[${this.tableName}] Updating record with ID ${id}:`, changes);
+      
+      const { data, error } = await supabase
+        .from(this.tableName)
+        .update({
+          ...changes,
+          updated_at: new Date() // Ensure updated_at is always set
+        })
+        .eq('id', id)
+        .select()
+        .single();
 
-    if (error) {
-      console.error(`Error updating ${this.tableName}:`, error);
-      throw error;
+      if (error) {
+        console.error(`Error updating ${this.tableName}:`, error);
+        throw error;
+      }
+
+      console.log(`[${this.tableName}] Successfully updated record with ID ${id}`);
+      return data as T;
+    } catch (err) {
+      console.error(`Unexpected error in update for ${this.tableName}:`, err);
+      throw err;
     }
-
-    return data as T;
   }
 
   /**

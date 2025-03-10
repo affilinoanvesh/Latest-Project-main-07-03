@@ -14,7 +14,10 @@ import {
   ChevronDown,
   ChevronRight,
   X,
-  FileText
+  FileText,
+  Archive,
+  RotateCcw,
+  Bug
 } from 'lucide-react';
 import { formatNZDate } from '../../utils/dateUtils';
 import { 
@@ -22,11 +25,14 @@ import {
   getProductExpiryByExpiryDate,
   deleteProductExpiry,
   getProductExpiryBySku,
-  getTotalQuantityBySku
+  getTotalQuantityBySku,
+  archiveProductExpiry,
+  unarchiveProductExpiry
 } from '../../db/operations/expiry';
 import { ProductExpiry } from '../../types';
 import ExpiryUploadModal from '../../components/expiry/ExpiryUploadModal';
 import ExpiryFormModal from '../../components/expiry/ExpiryFormModal';
+import { supabase } from '../../services/supabase';
 
 // Interface for grouped expiry data
 interface GroupedExpiry {
@@ -59,12 +65,15 @@ const ProductExpiryPage: React.FC = () => {
     sku: string;
     product_name?: string;
   } | undefined>(undefined);
+  const [showDebug, setShowDebug] = useState(false);
   
   // Load data
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await getProductExpiryByExpiryDate(sortOrder === 'asc');
+      // Add timestamp to force fresh data fetch
+      const timestamp = new Date().getTime();
+      const data = await getProductExpiryByExpiryDate(sortOrder === 'asc', timestamp);
       setExpiryData(data);
       
       // Group data by SKU
@@ -80,6 +89,14 @@ const ProductExpiryPage: React.FC = () => {
   // Group expiry data by SKU
   const groupExpiryData = (data: ProductExpiry[]): GroupedExpiry[] => {
     const groupedMap = new Map<string, GroupedExpiry>();
+    
+    console.log(`Grouping ${data.length} expiry records. Archive status:`, 
+      data.map(item => ({
+        sku: item.sku, 
+        archived: item.archived,
+        expiry_date: item.expiry_date
+      }))
+    );
     
     data.forEach(item => {
       if (!groupedMap.has(item.sku)) {
@@ -119,6 +136,19 @@ const ProductExpiryPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [sortOrder]);
+  
+  // Add a useEffect hook to load data when the component mounts
+  useEffect(() => {
+    loadData();
+    
+    // Set up an interval to refresh data every 30 seconds
+    const intervalId = setInterval(() => {
+      loadData();
+    }, 30000);
+    
+    // Clean up the interval when the component unmounts
+    return () => clearInterval(intervalId);
+  }, []);
   
   // Toggle expanded state for a SKU
   const toggleExpand = (sku: string) => {
@@ -274,16 +304,69 @@ const ProductExpiryPage: React.FC = () => {
     document.body.removeChild(link);
   };
   
+  // Debug function to check database status
+  const checkDatabaseStatus = async () => {
+    try {
+      // Get all records directly from Supabase
+      const { data: allRecords, error } = await supabase
+        .from('product_expiry')
+        .select('*');
+      
+      if (error) {
+        console.error('Error fetching all records:', error);
+        alert(`Error fetching records: ${error.message}`);
+        return;
+      }
+      
+      // Count records by archive status
+      const archivedCount = allRecords.filter((r: any) => r.archived === true).length;
+      const unarchivedCount = allRecords.filter((r: any) => r.archived === false).length;
+      const nullArchivedCount = allRecords.filter((r: any) => r.archived === null).length;
+      
+      console.log('Database status:', {
+        total: allRecords.length,
+        archived: archivedCount,
+        unarchived: unarchivedCount,
+        nullArchived: nullArchivedCount,
+        records: allRecords
+      });
+      
+      alert(`Database Status:
+Total records: ${allRecords.length}
+Archived (true): ${archivedCount}
+Unarchived (false): ${unarchivedCount}
+Null archived: ${nullArchivedCount}
+
+Check console for full details.`);
+    } catch (error) {
+      console.error('Error checking database status:', error);
+      alert(`Error: ${error}`);
+    }
+  };
+  
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
+    <div className="p-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">Product Expiry Tracking</h1>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">
+            Product Expiry Tracking
+            {showDebug && (
+              <button
+                onClick={checkDatabaseStatus}
+                className="ml-2 p-1 text-gray-400 hover:text-gray-600 rounded-full"
+                title="Check Database Status"
+                style={{ display: 'none' }}
+              >
+                <Bug size={16} />
+              </button>
+            )}
+          </h1>
           <p className="text-gray-600 text-sm">
             Track and manage products with expiration dates
           </p>
         </div>
-        <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
+        
+        <div className="flex flex-wrap gap-2 mt-4 md:mt-0">
           <button
             onClick={() => {
               setSelectedRecord(undefined);
@@ -291,32 +374,55 @@ const ProductExpiryPage: React.FC = () => {
               setIsAddingAdditionalExpiry(false);
               setIsFormModalOpen(true);
             }}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
           >
-            <Plus size={16} className="mr-2" />
-            Add Expiry Record
+            <Plus size={16} className="mr-1.5" />
+            Add Record
           </button>
+          
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
           >
-            <Upload size={16} className="mr-2" />
-            Import CSV
+            <Upload size={16} className="mr-1.5" />
+            Upload CSV
           </button>
+          
           <button
             onClick={exportToCSV}
-            className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
           >
-            <Download size={16} className="mr-2" />
+            <Download size={16} className="mr-1.5" />
             Export CSV
           </button>
+          
           <button
             onClick={generateCSVTemplate}
-            className="flex items-center px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
           >
-            <FileText size={16} className="mr-2" />
+            <FileText size={16} className="mr-1.5" />
             CSV Template
           </button>
+          
+          <button
+            onClick={loadData}
+            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+            title="Refresh Data"
+          >
+            <RefreshCw size={16} className="mr-1.5" />
+            Refresh
+          </button>
+          
+          {/* Debug toggle (hidden) */}
+          {showDebug && (
+            <button
+              onClick={() => setShowDebug(!showDebug)}
+              className="flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              <Bug size={16} className="mr-1.5" />
+              {showDebug ? 'Hide Debug' : 'Show Debug'}
+            </button>
+          )}
         </div>
       </div>
       
@@ -436,43 +542,36 @@ const ProductExpiryPage: React.FC = () => {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={9} className="p-6 text-center">
+                <td colSpan={9} className="p-8 text-center">
                   <div className="flex justify-center items-center">
-                    <RefreshCw className="animate-spin mr-2 text-blue-500" size={24} />
-                    <span className="text-gray-500 font-medium">Loading...</span>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    <span className="ml-2">Loading...</span>
                   </div>
                 </td>
               </tr>
             ) : filteredData.length === 0 ? (
               <tr>
                 <td colSpan={9} className="p-8 text-center">
-                  <div className="flex flex-col items-center justify-center py-6">
-                    <AlertTriangle size={40} className="text-yellow-500 mb-3" />
-                    <p className="text-gray-500 font-medium text-lg">No expiry records found</p>
-                    <p className="text-gray-400 mt-2 max-w-md">
-                      Add records manually or upload a CSV file to start tracking product expiry dates
-                    </p>
-                    <div className="mt-4 flex space-x-3">
-                      <button 
-                        onClick={() => {
-                          setSelectedRecord(undefined);
-                          setSelectedProductForAdditionalExpiry(undefined);
-                          setIsAddingAdditionalExpiry(false);
-                          setIsFormModalOpen(true);
-                        }}
-                        className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md transition-colors"
-                      >
-                        <Plus size={16} className="mr-2" />
-                        Add Record
-                      </button>
-                      <button 
-                        onClick={() => setIsUploadModalOpen(true)}
-                        className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors"
-                      >
-                        <Upload size={16} className="mr-2" />
-                        Upload CSV
-                      </button>
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <div className="text-gray-400 mb-4">
+                      <Calendar size={48} />
                     </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">No expiry records found</h3>
+                    <p className="text-gray-500 mb-4">
+                      Start tracking product expiry dates by adding your first record.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSelectedRecord(undefined);
+                        setSelectedProductForAdditionalExpiry(undefined);
+                        setIsAddingAdditionalExpiry(false);
+                        setIsFormModalOpen(true);
+                      }}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <Plus size={16} className="mr-2" />
+                      Add Expiry Record
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -502,7 +601,9 @@ const ProductExpiryPage: React.FC = () => {
                             </button>
                           )}
                         </td>
-                        <td className="p-3 font-medium">{group.product_name}</td>
+                        <td className="p-3 font-medium">
+                          {group.product_name}
+                        </td>
                         <td className="p-3">
                           <div className="flex items-center">
                             <span className="font-mono text-sm">{group.sku}</span>
@@ -542,37 +643,27 @@ const ProductExpiryPage: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end space-x-2">
-                            <button
-                              onClick={() => handleAddAdditionalExpiry(group.batches[0])}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
-                              title="Add Additional Expiry Date"
-                            >
-                              <Clock size={16} />
-                            </button>
-                            <button
-                              onClick={() => handleEdit(group.batches[0])}
+                            <button 
+                              onClick={() => handleEdit(earliestBatch)}
                               className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-full transition-colors"
-                              title="Edit Expiry Record"
+                              title="Edit Earliest Batch"
                             >
                               <Edit size={16} />
                             </button>
-                            {hasMultipleBatches ? (
-                              <button 
-                                onClick={() => handleDeleteAllBatches(group.sku)}
-                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
-                                title="Delete All Batches"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={() => group.batches[0].id && handleDelete(group.batches[0].id)}
-                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
-                                title="Delete Expiry Record"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            )}
+                            <button 
+                              onClick={() => handleAddAdditionalExpiry(earliestBatch)}
+                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
+                              title="Add Additional Expiry Date"
+                            >
+                              <Plus size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteAllBatches(group.sku)}
+                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
+                              title="Delete All Batches"
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -585,7 +676,7 @@ const ProductExpiryPage: React.FC = () => {
                             const batchColorClass = getExpiryColor(batchDate);
                             
                             return (
-                              <tr key={batch.id} className="bg-blue-50/50">
+                              <tr key={batch.id} className={`bg-blue-50/50`}>
                                 <td className="p-3"></td>
                                 <td className="p-3 pl-8 text-sm text-gray-500" colSpan={2}>
                                   <div className="flex items-center">
@@ -686,5 +777,31 @@ const ProductExpiryPage: React.FC = () => {
     </div>
   );
 };
+
+// Add click counter to activate debug mode
+document.addEventListener('DOMContentLoaded', () => {
+  let clickCount = 0;
+  let clickTimer: NodeJS.Timeout;
+  
+  const titleElement = document.querySelector('h1');
+  if (titleElement) {
+    titleElement.addEventListener('click', () => {
+      clickCount++;
+      
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        clickCount = 0;
+      }, 2000);
+      
+      if (clickCount >= 5) {
+        const debugButton = document.querySelector('button[title="Check Database Status"]');
+        if (debugButton) {
+          (debugButton as HTMLElement).style.display = 'inline-block';
+        }
+        clickCount = 0;
+      }
+    });
+  }
+});
 
 export default ProductExpiryPage; 
