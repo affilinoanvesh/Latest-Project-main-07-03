@@ -3,6 +3,7 @@ import { createWooCommerceClient } from './credentials';
 import { productsService, productVariationsService } from '../../services';
 import { updateLastSync } from './sync';
 import { safeUpdateProgress, chunkArray, filterObjectToSchema, sanitizeJsonbFields } from './utils';
+import { supabase } from '../../services/supabase';
 
 // Extract cost price from product metadata or attributes
 export const extractCostPrice = (product: any): number => {
@@ -330,8 +331,9 @@ const sanitizeNumericFields = (obj: any): any => {
 // Save products to Supabase
 const saveProductsToSupabase = async (products: Product[]): Promise<void> => {
   try {
-    // Delete all existing products
-    await productsService.deleteAll();
+    // Get existing products from the database
+    const existingProducts = await productsService.getAll();
+    const existingProductMap = new Map(existingProducts.map(p => [p.id, p]));
     
     // Define allowed fields based on database schema
     const allowedFields = [
@@ -350,10 +352,31 @@ const saveProductsToSupabase = async (products: Product[]): Promise<void> => {
       'created_at'
     ];
     
+    // Fields that should be preserved from existing products if they exist
+    const preserveFields = [
+      'supplier_price',
+      'supplier_name',
+      'supplier_updated',
+      'cost_price'
+    ] as const;
+    
     // Filter products to only include fields that exist in the database schema
     const filteredProducts = products.map(product => {
       // Sanitize numeric fields first
       const sanitizedProduct = sanitizeNumericFields(product);
+      
+      // Get the existing product if it exists
+      const existingProduct = existingProductMap.get(product.id);
+      
+      // If we have an existing product, preserve specified fields
+      if (existingProduct) {
+        preserveFields.forEach(field => {
+          if (existingProduct[field] !== undefined && existingProduct[field] !== null) {
+            // Type assertion to handle the index signature issue
+            (sanitizedProduct as any)[field] = existingProduct[field];
+          }
+        });
+      }
       
       // Ensure required fields are present
       const filtered = filterObjectToSchema(sanitizedProduct, allowedFields);
@@ -366,10 +389,29 @@ const saveProductsToSupabase = async (products: Product[]): Promise<void> => {
       return filtered as Omit<Product, 'id'>;
     });
     
-    // Batch insert new products
-    for (const batch of chunkArray(filteredProducts, 100)) {
-      await productsService.bulkAdd(batch);
+    // Find products to delete (products in DB that are not in the new list)
+    const newProductIds = new Set(products.map(p => p.id));
+    const productsToDelete = existingProducts
+      .filter(p => !newProductIds.has(p.id))
+      .map(p => p.id);
+    
+    // Delete products that no longer exist
+    if (productsToDelete.length > 0) {
+      console.log(`Deleting ${productsToDelete.length} products that no longer exist`);
+      for (const batch of chunkArray(productsToDelete, 100)) {
+        await supabase.from('products').delete().in('id', batch);
+      }
     }
+    
+    // Upsert products (update existing, insert new)
+    console.log(`Upserting ${filteredProducts.length} products`);
+    for (const batch of chunkArray(filteredProducts, 100)) {
+      await supabase
+        .from('products')
+        .upsert(batch, { onConflict: 'id' });
+    }
+    
+    console.log(`Successfully saved ${filteredProducts.length} products to Supabase`);
   } catch (error) {
     console.error('Error saving products to Supabase:', error);
     throw error;
@@ -379,8 +421,9 @@ const saveProductsToSupabase = async (products: Product[]): Promise<void> => {
 // Save product variations to Supabase
 const saveProductVariationsToSupabase = async (variations: ProductVariation[]): Promise<void> => {
   try {
-    // Delete all existing variations
-    await productVariationsService.deleteAll();
+    // Get existing variations from the database
+    const existingVariations = await productVariationsService.getAll();
+    const existingVariationMap = new Map(existingVariations.map(v => [v.id, v]));
     
     // Define allowed fields based on database schema
     const allowedFields = [
@@ -400,6 +443,14 @@ const saveProductVariationsToSupabase = async (variations: ProductVariation[]): 
       'created_at'
     ];
     
+    // Fields that should be preserved from existing variations if they exist
+    const preserveFields = [
+      'supplier_price',
+      'supplier_name',
+      'supplier_updated',
+      'cost_price'
+    ] as const;
+    
     // Filter variations to only include fields that exist in the database schema
     const filteredVariations = variations.map(variation => {
       // Sanitize numeric fields first
@@ -407,6 +458,19 @@ const saveProductVariationsToSupabase = async (variations: ProductVariation[]): 
       
       // Sanitize JSONB fields
       const jsonbSanitizedVariation = sanitizeJsonbFields(sanitizedVariation, ['attributes']);
+      
+      // Get the existing variation if it exists
+      const existingVariation = existingVariationMap.get(variation.id);
+      
+      // If we have an existing variation, preserve specified fields
+      if (existingVariation) {
+        preserveFields.forEach(field => {
+          if (existingVariation[field] !== undefined && existingVariation[field] !== null) {
+            // Type assertion to handle the index signature issue
+            (jsonbSanitizedVariation as any)[field] = existingVariation[field];
+          }
+        });
+      }
       
       // Ensure required fields are present
       const filtered = filterObjectToSchema(jsonbSanitizedVariation, allowedFields);
@@ -419,10 +483,29 @@ const saveProductVariationsToSupabase = async (variations: ProductVariation[]): 
       return filtered as Omit<ProductVariation, 'id'>;
     });
     
-    // Batch insert new variations
-    for (const batch of chunkArray(filteredVariations, 100)) {
-      await productVariationsService.bulkAdd(batch);
+    // Find variations to delete (variations in DB that are not in the new list)
+    const newVariationIds = new Set(variations.map(v => v.id));
+    const variationsToDelete = existingVariations
+      .filter(v => !newVariationIds.has(v.id))
+      .map(v => v.id);
+    
+    // Delete variations that no longer exist
+    if (variationsToDelete.length > 0) {
+      console.log(`Deleting ${variationsToDelete.length} variations that no longer exist`);
+      for (const batch of chunkArray(variationsToDelete, 100)) {
+        await supabase.from('product_variations').delete().in('id', batch);
+      }
     }
+    
+    // Upsert variations (update existing, insert new)
+    console.log(`Upserting ${filteredVariations.length} variations`);
+    for (const batch of chunkArray(filteredVariations, 100)) {
+      await supabase
+        .from('product_variations')
+        .upsert(batch, { onConflict: 'id' });
+    }
+    
+    console.log(`Successfully saved ${filteredVariations.length} variations to Supabase`);
   } catch (error) {
     console.error('Error saving product variations to Supabase:', error);
     throw error;

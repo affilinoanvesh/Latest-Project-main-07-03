@@ -75,6 +75,30 @@ export class SupabaseService<T extends { id?: number }> {
     console.log(`[${this.tableName}] Attempting to bulk add ${items.length} items`);
     
     try {
+      // Special handling for inventory table to check for empty SKUs
+      if (this.tableName === 'inventory') {
+        // Check for empty SKUs and log them
+        const emptySkuItems = items.filter((item: any) => !item.sku || item.sku === '');
+        if (emptySkuItems.length > 0) {
+          console.warn(`[${this.tableName}] Found ${emptySkuItems.length} items with empty SKUs`);
+          
+          // Generate unique SKUs for items with empty SKUs
+          items = items.map((item: any, index) => {
+            if (!item.sku || item.sku === '') {
+              if (item.variation_id) {
+                item.sku = `variation_${item.variation_id}`;
+              } else if (item.product_id) {
+                item.sku = `product_${item.product_id}`;
+              } else {
+                item.sku = `generated_${Date.now()}_${index}`;
+              }
+              console.log(`[${this.tableName}] Generated SKU ${item.sku} for item with empty SKU`);
+            }
+            return item;
+          });
+        }
+      }
+      
       const { data, error } = await supabase
         .from(this.tableName)
         .insert(items)

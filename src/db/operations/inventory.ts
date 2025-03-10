@@ -6,11 +6,62 @@ import { productsService, productVariationsService } from '../../services';
 
 export async function saveInventory(inventory: InventoryItem[]): Promise<void> {
   try {
+    // Get existing inventory to preserve supplier price information
+    const existingInventory = await inventoryService.getAll();
+    
+    // Create a map of existing inventory items by SKU for quick lookup
+    const existingInventoryMap = new Map<string, InventoryItem>();
+    existingInventory.forEach(item => {
+      if (item.sku) {
+        existingInventoryMap.set(item.sku, item);
+      }
+    });
+    
+    // Ensure all items have unique SKUs and preserve supplier price information
+    const processedInventory = inventory.map(item => {
+      // If SKU is empty or null, generate a unique one based on product_id and variation_id
+      if (!item.sku || item.sku.trim() === '') {
+        if (item.variation_id) {
+          item.sku = `variation_${item.variation_id}`;
+        } else {
+          item.sku = `product_${item.product_id}`;
+        }
+      }
+      
+      // Check if we have existing inventory data for this SKU
+      const existingItem = existingInventoryMap.get(item.sku);
+      
+      // Preserve existing supplier price information if available
+      if (existingItem) {
+        item.supplier_price = existingItem.supplier_price ?? item.supplier_price;
+        item.supplier_name = existingItem.supplier_name ?? item.supplier_name;
+        item.supplier_updated = existingItem.supplier_updated ?? item.supplier_updated;
+      }
+      
+      return item;
+    });
+    
+    // Filter out duplicate SKUs before adding
+    const uniqueSkuMap = new Map<string, InventoryItem>();
+    
+    // Add items with SKUs to the map
+    processedInventory.forEach(item => {
+      if (item.sku) {
+        uniqueSkuMap.set(item.sku, item);
+      }
+    });
+    
+    // Get unique items
+    const finalItems = Array.from(uniqueSkuMap.values());
+    
+    console.log(`Filtered inventory from ${inventory.length} to ${finalItems.length} unique items`);
+    console.log(`Preserved supplier price information for ${existingInventoryMap.size} items`);
+    
     // Delete all existing inventory items
     await supabase.from('inventory').delete().neq('id', 0);
     
     // Add new inventory items
-    for (const item of inventory) {
+    for (const item of finalItems) {
       await inventoryService.add(item);
     }
     
@@ -71,18 +122,18 @@ export async function updateSupplierPrice(
       return false;
     }
     
-    // First check if we already have an inventory item with this SKU
+    // First, check if an inventory item with this SKU already exists
     const item = await inventoryService.getInventoryBySku(sku);
     
-    if (item && item.id) {
-      // Update the supplier price
+    if (item) {
+      // Update the existing item
       const updates: Partial<InventoryItem> = {
         supplier_price: supplierPrice,
         supplier_name: supplierName,
-        supplier_updated: new Date() // Add a timestamp for when the supplier price was updated
+        supplier_updated: new Date()
       };
       
-      await inventoryService.update(item.id, updates);
+      await inventoryService.update(item.id!, updates);
       console.log(`Updated supplier price for SKU ${sku} to ${supplierPrice} from ${supplierName}`);
       return true;
     } else {
@@ -112,6 +163,24 @@ export async function updateSupplierPrice(
           return true;
         }
         
+        // Before creating a new item, check if any inventory item has this SKU
+        // This is a safety check to prevent duplicate SKUs
+        const allInventory = await inventoryService.getAll();
+        const duplicateSku = allInventory.find(i => i.sku === sku);
+        
+        if (duplicateSku) {
+          // Update the existing item instead of creating a new one
+          const updates: Partial<InventoryItem> = {
+            supplier_price: supplierPrice,
+            supplier_name: supplierName,
+            supplier_updated: new Date()
+          };
+          
+          await inventoryService.update(duplicateSku.id!, updates);
+          console.log(`Updated existing inventory item with duplicate SKU ${sku}`);
+          return true;
+        }
+        
         // Create a new inventory item for this product
         const newItem: Partial<InventoryItem> = {
           product_id: product.id,
@@ -124,47 +193,65 @@ export async function updateSupplierPrice(
         await inventoryService.add(newItem as any);
         console.log(`Created new inventory item for product ${product.name} (SKU: ${sku})`);
         return true;
-      } else {
-        // Try to find a variation with this SKU
-        const variations = await productVariationsService.getAll();
-        const variation = variations.find((v: any) => v.sku === sku);
+      }
+      
+      // Try to find a variation with this SKU
+      const variations = await productVariationsService.getAll();
+      const variation = variations.find((v: any) => v.sku === sku);
+      
+      if (variation) {
+        // Check if an inventory item already exists for this variation_id
+        const existingItems = await inventoryService.getInventoryByVariationId(variation.id);
         
-        if (variation) {
-          // Check if an inventory item already exists for this variation_id
-          const existingItems = await inventoryService.getInventoryByVariationId(variation.id);
+        if (existingItems && existingItems.length > 0) {
+          // Update the existing inventory item instead of creating a new one
+          const existingItem = existingItems[0];
+          const updates: Partial<InventoryItem> = {
+            supplier_price: supplierPrice,
+            supplier_name: supplierName,
+            supplier_updated: new Date(),
+            sku: sku // Ensure SKU is set correctly
+          };
           
-          if (existingItems && existingItems.length > 0) {
-            // Update the existing inventory item instead of creating a new one
-            const existingItem = existingItems[0];
-            const updates: Partial<InventoryItem> = {
-              supplier_price: supplierPrice,
-              supplier_name: supplierName,
-              supplier_updated: new Date(),
-              sku: sku // Ensure SKU is set correctly
-            };
-            
-            await inventoryService.update(existingItem.id!, updates);
-            console.log(`Updated existing inventory item for variation (SKU: ${sku})`);
-            return true;
-          }
-          
-          // Create a new inventory item for this variation
-          const newItem: Partial<InventoryItem> = {
-            product_id: variation.parent_id,
-            variation_id: variation.id,
-            sku,
+          await inventoryService.update(existingItem.id!, updates);
+          console.log(`Updated existing inventory item for variation (SKU: ${sku})`);
+          return true;
+        }
+        
+        // Before creating a new item, check if any inventory item has this SKU
+        // This is a safety check to prevent duplicate SKUs
+        const allInventory = await inventoryService.getAll();
+        const duplicateSku = allInventory.find(i => i.sku === sku);
+        
+        if (duplicateSku) {
+          // Update the existing item instead of creating a new one
+          const updates: Partial<InventoryItem> = {
             supplier_price: supplierPrice,
             supplier_name: supplierName,
             supplier_updated: new Date()
           };
           
-          await inventoryService.add(newItem as any);
-          console.log(`Created new inventory item for variation (SKU: ${sku})`);
+          await inventoryService.update(duplicateSku.id!, updates);
+          console.log(`Updated existing inventory item with duplicate SKU ${sku}`);
           return true;
-        } else {
-          console.warn(`Product or variation with SKU ${sku} not found for supplier price update`);
-          return false;
         }
+        
+        // Create a new inventory item for this variation
+        const newItem: Partial<InventoryItem> = {
+          product_id: variation.parent_id,
+          variation_id: variation.id,
+          sku,
+          supplier_price: supplierPrice,
+          supplier_name: supplierName,
+          supplier_updated: new Date()
+        };
+        
+        await inventoryService.add(newItem as any);
+        console.log(`Created new inventory item for variation (SKU: ${sku})`);
+        return true;
+      } else {
+        console.warn(`Product or variation with SKU ${sku} not found for supplier price update`);
+        return false;
       }
     }
   } catch (error) {
