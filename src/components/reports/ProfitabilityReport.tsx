@@ -56,12 +56,12 @@ const ProfitabilityReport: React.FC<ProfitabilityReportProps> = ({ data }) => {
   
   return (
     <>
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="bg-white shadow-md rounded-lg p-6 border border-gray-200">
         <div 
           className="flex justify-between items-center cursor-pointer"
           onClick={() => toggleSection('profitability-overview')}
         >
-          <h2 className="text-lg font-semibold">Profitability Overview</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Profitability Overview</h2>
           {expandedSections.has('profitability-overview') ? (
             <ChevronUp className="h-5 w-5 text-gray-500" />
           ) : (
@@ -72,36 +72,36 @@ const ProfitabilityReport: React.FC<ProfitabilityReportProps> = ({ data }) => {
         {expandedSections.has('profitability-overview') && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-500">Total Revenue</p>
-                <p className="text-2xl font-bold">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <p className="text-sm text-blue-700 font-medium">Total Revenue</p>
+                <p className="text-2xl font-bold text-blue-800">
                   {formatCurrency(totalRevenue)}
                 </p>
               </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-500">Total Net Profit</p>
-                <p className="text-2xl font-bold">
+              <div className="bg-teal-50 p-4 rounded-lg border border-teal-100">
+                <p className="text-sm text-teal-700 font-medium">Total Net Profit</p>
+                <p className={`text-2xl font-bold ${totalNetProfit >= 0 ? 'text-teal-800' : 'text-red-600'}`}>
                   {formatCurrency(totalNetProfit)}
                 </p>
               </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-500">Average Profit Margin</p>
-                <p className="text-2xl font-bold">
+              <div className={`${averageProfitMargin >= 0 ? 'bg-teal-50 border-teal-100' : 'bg-red-50 border-red-100'} p-4 rounded-lg border`}>
+                <p className={`text-sm font-medium ${averageProfitMargin >= 0 ? 'text-teal-700' : 'text-red-700'}`}>Average Profit Margin</p>
+                <p className={`text-2xl font-bold ${averageProfitMargin >= 0 ? 'text-teal-800' : 'text-red-800'}`}>
                   {formatPercentage(averageProfitMargin)}
                 </p>
               </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-500">Total Cost of Goods</p>
-                <p className="text-2xl font-bold">
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <p className="text-sm text-gray-700 font-medium">Total Cost of Goods</p>
+                <p className="text-2xl font-bold text-gray-800">
                   {formatCurrency(totalCost)}
                 </p>
               </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-500">Total Expenses</p>
-                <p className="text-2xl font-bold">
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <p className="text-sm text-gray-700 font-medium">Total Expenses</p>
+                <p className="text-2xl font-bold text-gray-800">
                   {formatCurrency(totalExpenses)}
                 </p>
               </div>
@@ -110,12 +110,12 @@ const ProfitabilityReport: React.FC<ProfitabilityReportProps> = ({ data }) => {
         )}
       </div>
       
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="bg-white shadow-md rounded-lg p-6 border border-gray-200 mt-6">
         <div 
           className="flex justify-between items-center cursor-pointer"
           onClick={() => toggleSection('profitability-chart')}
         >
-          <h2 className="text-lg font-semibold">Profitability Trend</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Profitability Trend</h2>
           {expandedSections.has('profitability-chart') ? (
             <ChevronUp className="h-5 w-5 text-gray-500" />
           ) : (
@@ -136,21 +136,21 @@ const ProfitabilityReport: React.FC<ProfitabilityReportProps> = ({ data }) => {
                 <Tooltip formatter={(value) => formatCurrency(value as number)} />
                 <Legend />
                 <Bar dataKey="revenue" name="Revenue" fill="#3b82f6" />
-                <Bar dataKey="cost" name="Cost" stackId="a" fill="#10b981" />
-                <Bar dataKey="expenses" name="Expenses" stackId="a" fill="#f59e0b" />
-                <Line type="monotone" dataKey="netProfit" name="Net Profit" stroke="#8b5cf6" />
+                <Bar dataKey="cost" name="Cost" stackId="a" fill="#64748b" />
+                <Bar dataKey="expenses" name="Expenses" stackId="a" fill="#94a3b8" />
+                <Line type="monotone" dataKey="netProfit" name="Net Profit" stroke="#0d9488" strokeWidth={2} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}
       </div>
       
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="bg-white shadow-md rounded-lg p-6 border border-gray-200 mt-6">
         <div 
           className="flex justify-between items-center cursor-pointer"
           onClick={() => toggleSection('profit-margin-chart')}
         >
-          <h2 className="text-lg font-semibold">Profit Margin Trend</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Profit Margin Trend</h2>
           {expandedSections.has('profit-margin-chart') ? (
             <ChevronUp className="h-5 w-5 text-gray-500" />
           ) : (
@@ -173,19 +173,19 @@ const ProfitabilityReport: React.FC<ProfitabilityReportProps> = ({ data }) => {
                   return formatCurrency(value as number);
                 }} />
                 <Legend />
-                <Line type="monotone" dataKey="profitMargin" name="Profit Margin %" stroke="#3b82f6" />
+                <Line type="monotone" dataKey="profitMargin" name="Profit Margin %" stroke="#0d9488" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
       </div>
       
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="bg-white shadow-md rounded-lg p-6 border border-gray-200 mt-6">
         <div 
           className="flex justify-between items-center cursor-pointer"
           onClick={() => toggleSection('profitability-table')}
         >
-          <h2 className="text-lg font-semibold">Profitability Data</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Profitability Data</h2>
           {expandedSections.has('profitability-table') ? (
             <ChevronUp className="h-5 w-5 text-gray-500" />
           ) : (
@@ -198,79 +198,96 @@ const ProfitabilityReport: React.FC<ProfitabilityReportProps> = ({ data }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Period
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Revenue
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Cost
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Gross Profit
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Expenses
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Net Profit
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Margin
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {data.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={index} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">
                       {item.period}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-medium">
                       {formatCurrency(item.revenue !== undefined ? item.revenue : 
                                      (item.totalRevenue !== undefined ? item.totalRevenue : 0))}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
                       {formatCurrency(item.cost)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(item.grossProfit)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <span className={item.grossProfit >= 0 ? 'text-teal-600' : 'text-red-600'}>
+                        {formatCurrency(item.grossProfit)}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
                       {formatCurrency(item.expenses)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(item.netProfit)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <span className={item.netProfit >= 0 ? 'text-teal-600' : 'text-red-600'}>
+                        {formatCurrency(item.netProfit)}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatPercentage(item.profitMargin)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        item.profitMargin < 0 ? 'bg-red-100 text-red-800' :
+                        item.profitMargin >= 20 ? 'bg-teal-100 text-teal-800' : 
+                        item.profitMargin >= 10 ? 'bg-blue-100 text-blue-800' : 
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {formatPercentage(item.profitMargin)}
+                      </span>
                     </td>
                   </tr>
                 ))}
                 
                 {/* Totals row */}
-                <tr className="bg-gray-50 font-medium">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <tr className="bg-gray-100 font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
                     Total
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-700">
                     {formatCurrency(totalRevenue)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
                     {formatCurrency(totalCost)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(totalGrossProfit)}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
+                    <span className={totalGrossProfit >= 0 ? 'text-teal-700' : 'text-red-700'}>
+                      {formatCurrency(totalGrossProfit)}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
                     {formatCurrency(totalExpenses)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(totalNetProfit)}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
+                    <span className={totalNetProfit >= 0 ? 'text-teal-700' : 'text-red-700'}>
+                      {formatCurrency(totalNetProfit)}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatPercentage(averageProfitMargin)}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
+                    <span className={averageProfitMargin >= 0 ? 'text-teal-700' : 'text-red-700'}>
+                      {formatPercentage(averageProfitMargin)}
+                    </span>
                   </td>
                 </tr>
               </tbody>

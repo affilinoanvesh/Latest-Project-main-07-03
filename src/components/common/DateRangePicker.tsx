@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { format, subDays, subMonths, startOfMonth, endOfMonth, isValid } from 'date-fns';
-import { DateRange } from '../types';
+import { DateRange } from '../../types';
 import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';
-import { formatNZDate, getNZTimezone } from '../services/api/utils';
+import { formatNZDate, getNZTimezone } from '../../services/api/utils';
 
 interface DateRangePickerProps {
   dateRange: DateRange;

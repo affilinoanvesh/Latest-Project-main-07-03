@@ -1,5 +1,5 @@
 import React from 'react';
-import { DollarSign, AlertCircle } from 'lucide-react';
+import { DollarSign, AlertCircle, FileText, BarChart2 } from 'lucide-react';
 import { Product } from './types';
 
 interface ExpiryDetailsProps {
@@ -23,6 +23,16 @@ const ExpiryDetails: React.FC<ExpiryDetailsProps> = ({
   quantity,
   selectedProduct
 }) => {
+  // Calculate the maximum possible loss based on product cost
+  const maxPossibleLoss = selectedProduct.supplier_price 
+    ? Math.abs(quantity) * selectedProduct.supplier_price 
+    : 0;
+  
+  // Calculate the net loss for manual sales (max loss - sale amount)
+  const netLoss = isManualSale 
+    ? Math.max(0, maxPossibleLoss - saleAmount)
+    : lossAmount;
+  
   // Manual sale section
   const ManualSaleSection = () => (
     <div className="border-l-4 border-green-400 pl-3 py-3 bg-green-50 rounded-lg mt-3">
@@ -41,19 +51,49 @@ const ExpiryDetails: React.FC<ExpiryDetailsProps> = ({
           placeholder="Enter sale amount"
         />
         <p className="text-xs text-gray-600 mt-1">
-          This amount will be added as additional revenue
+          This amount will be added as additional revenue in financial reports
         </p>
       </div>
       
+      {netLoss > 0 && (
+        <div className="mb-3">
+          <div className="flex justify-between items-center">
+            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+              <BarChart2 size={16} className="text-orange-600 mr-1" />
+              Net Loss Calculation
+            </label>
+            <span className="text-sm font-medium text-orange-600">${netLoss.toFixed(2)}</span>
+          </div>
+          <div className="text-xs text-gray-600 bg-white p-2 rounded-lg border border-gray-200">
+            <div className="flex justify-between">
+              <span>Maximum value:</span>
+              <span>${maxPossibleLoss.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Sale amount:</span>
+              <span>-${saleAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-medium border-t mt-1 pt-1">
+              <span>Net loss:</span>
+              <span>${netLoss.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-green-100">
         <p className="font-medium flex items-center text-green-700">
-          <AlertCircle size={16} className="mr-1" />
-          What happens:
+          <FileText size={16} className="mr-1" />
+          Financial Impact:
         </p>
         <ul className="list-disc pl-5 mt-1 space-y-1">
-          <li>Expected stock will be reduced by {Math.abs(quantity)} units</li>
-          <li>Revenue of ${saleAmount.toFixed(2)} will be recorded</li>
-          <li>No loss will be recorded (since you recovered value)</li>
+          <li>Stock will be reduced by {Math.abs(quantity)} units</li>
+          <li><span className="font-medium text-green-600">${saleAmount.toFixed(2)}</span> will be recorded as additional revenue</li>
+          {netLoss > 0 ? (
+            <li><span className="font-medium text-orange-600">${netLoss.toFixed(2)}</span> will be recorded as an expense (partial loss)</li>
+          ) : (
+            <li>No loss will be recorded (full value recovered)</li>
+          )}
         </ul>
       </div>
     </div>
@@ -79,7 +119,7 @@ const ExpiryDetails: React.FC<ExpiryDetailsProps> = ({
         />
         {selectedProduct.supplier_price && selectedProduct.supplier_price > 0 && (
           <p className="text-xs text-gray-600 mt-1">
-            Maximum possible loss: ${(Math.abs(quantity) * selectedProduct.supplier_price).toFixed(2)} 
+            Suggested loss: ${maxPossibleLoss.toFixed(2)} 
             ({Math.abs(quantity)} units × ${selectedProduct.supplier_price})
           </p>
         )}
@@ -87,13 +127,14 @@ const ExpiryDetails: React.FC<ExpiryDetailsProps> = ({
       
       <div className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-red-100">
         <p className="font-medium flex items-center text-red-700">
-          <AlertCircle size={16} className="mr-1" />
-          What happens:
+          <FileText size={16} className="mr-1" />
+          Financial Impact:
         </p>
         <ul className="list-disc pl-5 mt-1 space-y-1">
-          <li>Expected stock will be reduced by {Math.abs(quantity)} units</li>
-          <li>Loss of ${lossAmount.toFixed(2)} will be recorded</li>
-          <li>This loss will appear in financial reports</li>
+          <li>Stock will be reduced by {Math.abs(quantity)} units</li>
+          <li><span className="font-medium text-red-600">${lossAmount.toFixed(2)}</span> will be recorded as an expense</li>
+          <li>This loss will appear in financial reports as "Expired Products"</li>
+          <li>No revenue will be recorded</li>
         </ul>
       </div>
     </div>
@@ -101,7 +142,10 @@ const ExpiryDetails: React.FC<ExpiryDetailsProps> = ({
 
   return (
     <div className="mb-4 border rounded-lg p-4 bg-gray-50">
-      <h3 className="font-medium text-gray-700 mb-2">Expiry Details</h3>
+      <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+        <AlertCircle size={16} className="text-amber-500 mr-1" />
+        Expiry Details
+      </h3>
       
       <div className="mb-2">
         <div className="flex items-center mb-2">

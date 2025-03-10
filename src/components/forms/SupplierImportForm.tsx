@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, Upload, FileText, RefreshCw } from 'lucide-react';
-import { SupplierPriceItem, SupplierPriceImport } from '../types';
-import { processSupplierPriceData, getSupplierImports, getSupplierImportItems } from '../db/operations/supplier';
+import { SupplierPriceItem, SupplierPriceImport } from '../../types';
+import { processSupplierPriceData, getSupplierImports, getSupplierImportItems } from '../../db/operations/supplier';
 
 interface SupplierImportFormProps {
   onClose: () => void;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { MovementReason } from '../../types';
 
@@ -12,6 +12,9 @@ import {
   Product
 } from './StockAdjustmentComponents';
 
+// Import ExpiryDetails component
+import ExpiryDetails from './StockAdjustmentComponents/ExpiryDetails';
+
 interface StockAdjustmentModalProps {
   sku?: string;
   productName?: string;
@@ -23,6 +26,11 @@ interface StockAdjustmentModalProps {
     notes: string;
     batchNumber?: string;
     date: Date;
+    // Add new fields for expiry and manual sales
+    isManualSale?: boolean;
+    saleAmount?: number;
+    lossAmount?: number;
+    lossPercentage?: number;
   }) => void;
   onClose: () => void;
   products?: Product[];
@@ -41,12 +49,39 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
   
   // State management
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [quantity, setQuantity] = useState<number>(0);
+  const [quantity, setQuantity] = useState<number>(-1); // Default to -1 for removals
   const [reason, setReason] = useState<MovementReason>('other');
   const [notes, setNotes] = useState<string>('');
   const [batchNumber, setBatchNumber] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [date, setDate] = useState<Date>(new Date());
+  
+  // New state for expiry details
+  const [isManualSale, setIsManualSale] = useState<boolean>(false);
+  const [saleAmount, setSaleAmount] = useState<number>(0);
+  const [lossAmount, setLossAmount] = useState<number>(0);
+  
+  // Calculate loss percentage based on loss amount and product cost
+  const [lossPercentage, setLossPercentage] = useState<number>(0);
+  
+  // Update loss amount when product or quantity changes
+  useEffect(() => {
+    if (selectedProduct && selectedProduct.supplier_price && quantity < 0) {
+      const calculatedLoss = Math.abs(quantity) * selectedProduct.supplier_price;
+      setLossAmount(calculatedLoss);
+    }
+  }, [selectedProduct, quantity]);
+  
+  // Calculate loss percentage when loss amount changes
+  useEffect(() => {
+    if (selectedProduct && selectedProduct.supplier_price && quantity < 0) {
+      const totalValue = Math.abs(quantity) * selectedProduct.supplier_price;
+      if (totalValue > 0) {
+        const percentage = (lossAmount / totalValue) * 100;
+        setLossPercentage(percentage);
+      }
+    }
+  }, [lossAmount, selectedProduct, quantity]);
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,17 +98,36 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
       return;
     }
     
+    // Validate sale amount if it's a manual sale
+    if (reason === 'expiry' && isManualSale && saleAmount <= 0) {
+      setError('Please enter a sale amount greater than zero');
+      return;
+    }
+    
+    // Validate loss amount if it's not a manual sale
+    if (reason === 'expiry' && !isManualSale && lossAmount <= 0) {
+      setError('Please enter a loss amount greater than zero');
+      return;
+    }
+    
     // Clear any previous errors
     setError(null);
     
-    // Submit the stock adjustment
+    // Submit the stock adjustment with additional fields
     onSubmit({
       sku: selectedProduct.sku,
       quantity,
       reason,
       notes,
       batchNumber: batchNumber || undefined,
-      date
+      date,
+      // Include expiry-related fields if reason is expiry
+      ...(reason === 'expiry' && {
+        isManualSale,
+        saleAmount: isManualSale ? saleAmount : 0,
+        lossAmount: !isManualSale ? lossAmount : 0,
+        lossPercentage
+      })
     });
   };
 
@@ -129,6 +183,20 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
           
           {/* Reason */}
           <ReasonSelector reason={reason} setReason={setReason} />
+          
+          {/* Expiry Details - only shown if reason is expiry and quantity is negative */}
+          {reason === 'expiry' && quantity < 0 && selectedProduct && (
+            <ExpiryDetails
+              isManualSale={isManualSale}
+              setIsManualSale={setIsManualSale}
+              saleAmount={saleAmount}
+              setSaleAmount={setSaleAmount}
+              lossAmount={lossAmount}
+              setLossAmount={setLossAmount}
+              quantity={quantity}
+              selectedProduct={selectedProduct}
+            />
+          )}
           
           {/* Notes and Batch Number */}
           <NotesAndBatch

@@ -5,7 +5,7 @@ import {
   LineChart, Line, ComposedChart, Area
 } from 'recharts';
 import { Download, Filter, Calendar, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import DateRangePicker from '../components/DateRangePicker';
+import DateRangePicker from '../components/common/DateRangePicker';
 import { DateRange, Order, Product, Expense, ReportData, AdditionalRevenue } from '../types';
 import { 
   fetchOrders, 

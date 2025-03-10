@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Edit, Save, X, ChevronRight } from 'lucide-react';
-import { Product, ProductVariation } from '../types';
-import { updateCostPrice } from '../db/operations/inventory';
+import { Product, ProductVariation } from '../../types';
+import { updateCostPrice } from '../../db/operations/inventory';
 
 interface ProductTableProps {
   products: Product[];

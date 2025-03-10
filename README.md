@@ -102,3 +102,26 @@ The application includes a migration tool to help you migrate your data from Dex
 ## License
 
 MIT
+
+## Project Structure
+
+The project is organized as follows:
+
+- `src/`: Source code
+  - `components/`: UI components
+    - `common/`: Common components like DateRangePicker, StatCard, etc.
+    - `layout/`: Layout components like Navbar
+    - `tables/`: Table components
+    - `forms/`: Form components
+    - Other feature-specific component directories
+  - `pages/`: Page components
+  - `context/`: React context providers
+  - `db/`: Database operations
+  - `services/`: Service layer for API interactions
+  - `types/`: TypeScript type definitions
+  - `utils/`: Utility functions
+- `scripts/`: Shell scripts for database operations and maintenance
+- `database/`: Database-related files and documentation
+- `public/`: Static assets
+
+This organization helps maintain a clean separation of concerns and makes it easier to find and modify code.

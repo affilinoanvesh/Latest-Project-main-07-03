@@ -147,29 +147,3 @@ export const checkAtumApiAvailability = async (): Promise<boolean> => {
     return false;
   }
 };
-
-// Test API credentials
-export const testApiCredentials = async (credentials: ApiCredentials): Promise<boolean> => {
-  try {
-    // Create temporary client for testing
-    const { store_url, key, secret } = credentials;
-    
-    // Ensure URL doesn't have trailing slash
-    const baseUrl = store_url.endsWith('/') ? store_url.slice(0, -1) : store_url;
-    
-    const client = axios.create({
-      baseURL: `${baseUrl}/wp-json/wc/v3`,
-      params: {
-        consumer_key: key,
-        consumer_secret: secret
-      }
-    });
-
-    // Test connection by getting products
-    const response = await client.get('/products', { params: { per_page: 1 } });
-    return response.status === 200;
-  } catch (error) {
-    console.error('API credentials test failed:', error);
-    return false;
-  }
-};

@@ -1,6 +1,6 @@
 import React from 'react';
 import { DollarSign } from 'lucide-react';
-import StatCard from '../StatCard';
+import StatCard from '../common/StatCard';
 import { formatCurrency, Tooltip } from './InventoryUtils';
 
 interface InventorySummaryProps {

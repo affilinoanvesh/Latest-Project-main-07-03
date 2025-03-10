@@ -177,11 +177,25 @@ const fetchAllOrders = async (startDate?: string, endDate?: string, progressCall
     }
     
     // Convert dates to NZ timezone
-    allOrders = allOrders.map(order => ({
-      ...order,
-      date_created_nz: convertToNZTimezone(new Date(order.date_created)).toISOString(),
-      date_created_display: format(convertToNZTimezone(new Date(order.date_created)), 'dd/MM/yyyy h:mm a')
-    }));
+    allOrders = allOrders.map(order => {
+      const dateCreated = order.date_created ? createSafeDate(order.date_created) : null;
+      let dateCreatedNZ = '';
+      let dateCreatedDisplay = 'N/A';
+      
+      if (isValidDate(dateCreated)) {
+        const tzDate = convertToNZTimezone(dateCreated);
+        if (tzDate) {
+          dateCreatedNZ = tzDate.toISOString();
+          dateCreatedDisplay = format(tzDate, 'dd/MM/yyyy h:mm a');
+        }
+      }
+      
+      return {
+        ...order,
+        date_created_nz: dateCreatedNZ,
+        date_created_display: dateCreatedDisplay
+      };
+    });
     
     return allOrders;
   } catch (error) {
@@ -275,8 +289,8 @@ export const syncOrdersByMonth = async (
     // Get existing orders for this month
     const existingOrders = await ordersService.getAll();
     const monthOrders = existingOrders.filter(order => {
-      const orderDate = new Date(order.date_created);
-      return orderDate >= monthStart && orderDate <= monthEnd;
+      const orderDate = order.date_created ? createSafeDate(order.date_created) : null;
+      return isValidDate(orderDate) && orderDate >= monthStart && orderDate <= monthEnd;
     });
     
     // For December, always force a sync regardless of existing data
@@ -659,8 +673,8 @@ export const hasDecemberOrders = async (year: number): Promise<boolean> => {
     
     // Filter for December orders of the specified year
     const decemberOrders = orders.filter(order => {
-      const orderDate = new Date(order.date_created);
-      return orderDate.getFullYear() === year && orderDate.getMonth() === 11;
+      const orderDate = order.date_created ? createSafeDate(order.date_created) : null;
+      return isValidDate(orderDate) && orderDate.getFullYear() === year && orderDate.getMonth() === 11;
     });
     
     console.log(`Found ${decemberOrders.length} December ${year} orders in database`);
@@ -669,97 +683,6 @@ export const hasDecemberOrders = async (year: number): Promise<boolean> => {
   } catch (error) {
     console.error(`Error checking for December ${year} orders:`, error);
     return false;
-  }
-};
-
-// Test API connection for December data
-export const testDecemberApiConnection = async (
-  year: number = new Date().getFullYear()
-): Promise<{ success: boolean; message: string; details?: any }> => {
-  try {
-    console.log(`Testing API connection for December ${year} data`);
-    
-    // Create date range for December of the specified year
-    const decemberStart = new Date(year, 11, 1); // December 1st
-    const decemberEnd = new Date(year, 11, 31, 23, 59, 59); // December 31st 23:59:59
-    
-    // Format dates for API
-    const startDateStr = decemberStart.toISOString();
-    const endDateStr = decemberEnd.toISOString();
-    
-    console.log(`Test connection for date range: ${startDateStr} to ${endDateStr}`);
-    
-    // Create WooCommerce client
-    const client = await createWooCommerceClient();
-    
-    // Make a simple request to check connection
-    // Only request 1 item to minimize data transfer
-    const response = await client.get('/orders', {
-      params: {
-        per_page: 1,
-        after: startDateStr,
-        before: endDateStr
-      },
-      timeout: 10000 // 10 second timeout for test
-    });
-    
-    // Check if the request was successful
-    return {
-      success: true,
-      message: `Successfully connected to API. Found ${response.headers['x-wp-total'] || 0} orders for December ${year}.`,
-      details: {
-        totalOrders: response.headers['x-wp-total'],
-        totalPages: response.headers['x-wp-totalpages'],
-        firstOrderDate: response.data && response.data.length > 0 ? response.data[0].date_created : null
-      }
-    };
-  } catch (error: any) {
-    console.error(`Error testing API connection for December ${year}:`, error);
-    
-    let errorMessage = 'Unknown error occurred';
-    let errorDetails = {};
-    
-    if (error.message === 'Network Error') {
-      errorMessage = 'Network Error: Unable to connect to the WooCommerce API';
-      errorDetails = {
-        possibleCauses: [
-          'Incorrect API URL',
-          'CORS issues (if running locally)',
-          'Network connectivity problems',
-          'API server is down or unreachable'
-        ],
-        recommendations: [
-          'Check your API URL in Settings',
-          'Ensure your consumer key and secret are correct',
-          'Check your internet connection',
-          'Try accessing the WooCommerce admin panel directly'
-        ]
-      };
-    } else if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      errorMessage = `API Error (${error.response.status}): ${error.response.statusText}`;
-      errorDetails = {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      };
-    } else if (error.request) {
-      // The request was made but no response was received
-      errorMessage = 'No response received from the WooCommerce API';
-      errorDetails = {
-        request: error.request._currentUrl || error.request.responseURL || 'unknown URL'
-      };
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      errorMessage = error.message;
-    }
-    
-    return {
-      success: false,
-      message: errorMessage,
-      details: errorDetails
-    };
   }
 };
 
@@ -968,5 +891,22 @@ const saveOrdersToSupabase = async (orders: Order[]): Promise<void> => {
   } catch (error) {
     console.error('Error saving orders to Supabase:', error);
     throw error;
+  }
+};
+
+// Helper function to safely handle null dates
+const isValidDate = (date: Date | null): date is Date => {
+  return date !== null && date instanceof Date && !isNaN(date.getTime());
+};
+
+// Helper function to safely create a Date from a string or Date object
+const createSafeDate = (dateInput: string | Date | null): Date | null => {
+  if (!dateInput) return null;
+  try {
+    const date = new Date(dateInput);
+    return isNaN(date.getTime()) ? null : date;
+  } catch (error) {
+    console.error('Invalid date input:', dateInput);
+    return null;
   }
 };

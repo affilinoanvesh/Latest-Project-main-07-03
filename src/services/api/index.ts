@@ -10,9 +10,6 @@ export * from './overhead';
 export * from './sync';
 export * from './utils';
 
-// Export testApiCredentials from credentials
-export { testApiCredentials } from './credentials';
-
 // Export order-related functions
 export { 
   deleteOrder, 

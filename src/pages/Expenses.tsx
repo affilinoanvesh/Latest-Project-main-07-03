@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Plus, Upload, Download, Tag } from 'lucide-react';
-import DateRangePicker from '../components/DateRangePicker';
+import DateRangePicker from '../components/common/DateRangePicker';
 import { DateRange, Expense, ExpenseCategory } from '../types';
 import { 
   getExpenses, 
@@ -139,7 +139,9 @@ const Expenses: React.FC = () => {
 
   // Handle edit expense
   const handleEditExpense = (expense: Expense) => {
-    setEditingExpenseId(expense.id);
+    if (expense.id !== undefined) {
+      setEditingExpenseId(expense.id);
+    }
     setEditingExpense(expense);
     
     // Scroll to the form

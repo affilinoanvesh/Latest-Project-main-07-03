@@ -17,13 +17,19 @@ import {
   getStockMovementsBySku,
   addStockMovement,
   performReconciliation,
-  getLastCacheTime
+  getLastCacheTime,
+  getAllStockMovements
 } from '../db/operations/stockReconciliation';
 import { processStockImportCsv } from '../utils/csv/stockImport';
 import { formatDateTime } from '../utils/formatters';
 import { loadReportData } from '../services/reports';
 import { productsService } from '../services';
 import { productVariationsService } from '../services';
+import { getProducts } from '../db/operations/products';
+import { saveAdditionalRevenue } from '../db/operations/additionalRevenue';
+import { saveExpense } from '../db/operations/expenses';
+import { getAdditionalRevenueCategories } from '../db/operations/additionalRevenue';
+import { getExpenseCategories } from '../db/operations/expenses';
 
 // Import components
 import StockReconciliationTable from '../components/stockReconciliation/StockReconciliationTable';
@@ -390,6 +396,7 @@ const StockReconciliation: React.FC = () => {
     lossPercentage?: number;
     isManualSale?: boolean;
     saleAmount?: number;
+    lossAmount?: number;
   }) => {
     try {
       // Create the base movement data
@@ -409,7 +416,8 @@ const StockReconciliation: React.FC = () => {
         const metadata = {
           is_manual_sale: data.isManualSale || false,
           loss_percentage: data.lossPercentage || 0,
-          sale_amount: data.isManualSale ? data.saleAmount : 0
+          sale_amount: data.isManualSale ? data.saleAmount : 0,
+          loss_amount: data.lossAmount || 0
         };
         
         // Add metadata to notes for reporting purposes
@@ -418,7 +426,75 @@ const StockReconciliation: React.FC = () => {
       }
       
       // Add the stock movement
-      await addStockMovement(movementData);
+      const movementId = await addStockMovement(movementData);
+      
+      // Get the product details to use in descriptions
+      const product = summaries.find(s => s.sku === data.sku);
+      const productName = product ? product.product_name : data.sku;
+      
+      // Handle financial records for loss reasons (expiry, damage, theft)
+      if (['expiry', 'damage', 'theft'].includes(data.reason) && data.quantity < 0) {
+        try {
+          // Get categories for additional revenue and expenses
+          const revenueCategories = await getAdditionalRevenueCategories();
+          const expenseCategories = await getExpenseCategories();
+          
+          // Find or use default categories
+          const manualSaleCategory = revenueCategories.find(c => c.name === 'Manual Sales') || revenueCategories[0];
+          const inventoryLossCategory = expenseCategories.find(c => c.name === 'Inventory Loss') || expenseCategories[0];
+          const expiredProductsCategory = expenseCategories.find(c => c.name === 'Expired Products') || inventoryLossCategory;
+          const damagedProductsCategory = expenseCategories.find(c => c.name === 'Damaged Products') || inventoryLossCategory;
+          const theftCategory = expenseCategories.find(c => c.name === 'Inventory Theft') || inventoryLossCategory;
+          
+          // For manual sales of expired/damaged products
+          if (data.reason === 'expiry' && data.isManualSale && data.saleAmount && data.saleAmount > 0) {
+            // 1. Record the sale amount as additional revenue
+            await saveAdditionalRevenue({
+              amount: data.saleAmount,
+              date: data.date,
+              category_id: manualSaleCategory.id || 0,
+              category: manualSaleCategory.name,
+              description: `Manual sale of ${Math.abs(data.quantity)} units of ${productName} (${data.sku})`,
+              reference: `SM-${movementId}`, // Reference to stock movement
+              payment_method: 'cash', // Default or make configurable
+              tax_included: true // Configure as needed
+            });
+            
+            // 2. If there's still a loss (sale amount less than full value), record it as an expense
+            if (data.lossAmount && data.lossAmount > 0) {
+              await saveExpense({
+                amount: data.lossAmount,
+                date: data.date,
+                category: inventoryLossCategory.name,
+                description: `Partial loss on manual sale of ${Math.abs(data.quantity)} units of ${productName} (${data.sku})`,
+                reference: `SM-${movementId}`, // Reference to stock movement
+                tax_deductible: true // Configure as needed
+              });
+            }
+          } else {
+            // For complete loss (not sold), record the full cost as an expense
+            if (data.lossAmount && data.lossAmount > 0) {
+              // Select the appropriate category based on reason
+              const categoryName = 
+                data.reason === 'expiry' ? expiredProductsCategory.name : 
+                data.reason === 'damage' ? damagedProductsCategory.name : 
+                theftCategory.name;
+              
+              await saveExpense({
+                amount: data.lossAmount,
+                date: data.date,
+                category: categoryName,
+                description: `${data.reason} of ${Math.abs(data.quantity)} units of ${productName} (${data.sku})`,
+                reference: `SM-${movementId}`, // Reference to stock movement
+                tax_deductible: true // Configure as needed
+              });
+            }
+          }
+        } catch (categoryError) {
+          console.error('Error handling financial records:', categoryError);
+          // Continue with the process even if financial records fail
+        }
+      }
       
       setShowAdjustmentModal(false);
       loadData(true);

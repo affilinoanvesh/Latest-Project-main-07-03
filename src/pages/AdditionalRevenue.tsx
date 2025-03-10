@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Plus, Upload, Download, Tag } from 'lucide-react';
-import DateRangePicker from '../components/DateRangePicker';
+import DateRangePicker from '../components/common/DateRangePicker';
 import { DateRange, AdditionalRevenue, AdditionalRevenueCategory } from '../types';
 import { 
   getAdditionalRevenue, 
@@ -75,7 +75,7 @@ const AdditionalRevenuePage: React.FC = () => {
       const term = searchTerm.toLowerCase();
       return (
         revenue.description.toLowerCase().includes(term) ||
-        revenue.category.toLowerCase().includes(term) ||
+        (revenue.category && revenue.category.toLowerCase().includes(term)) ||
         (revenue.reference && revenue.reference.toLowerCase().includes(term)) ||
         (revenue.payment_method && revenue.payment_method.toLowerCase().includes(term))
       );

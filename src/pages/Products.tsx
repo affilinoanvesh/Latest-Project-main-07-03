@@ -8,8 +8,8 @@ import {
 } from '../services/api';
 import { processSupplierPriceData, getSupplierImports } from '../db/operations/supplier';
 import { productVariationsService, inventoryService, supabase, productsService } from '../services';
-import ProductTable from '../components/ProductTable';
-import SupplierImportForm from '../components/SupplierImportForm';
+import ProductTable from '../components/tables/ProductTable';
+import SupplierImportForm from '../components/forms/SupplierImportForm';
 
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);

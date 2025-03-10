@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter, ChevronLeft, ChevronRight, BarChart2, CheckCircle } from 'lucide-react';
-import DateRangePicker from '../components/DateRangePicker';
+import DateRangePicker from '../components/common/DateRangePicker';
 import { DateRange, Order } from '../types';
 import { fetchOrders, fetchInventory, fetchOverheadCosts, hasApiCredentials, deleteOrder } from '../services/api';
 import { calculateProfitAndLoss } from '../services/pnl';
@@ -428,11 +428,23 @@ const Orders: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatCurrency(order.total)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.profit ? formatCurrency(order.profit) : formatCurrency(0)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {order.profit !== undefined && (
+                        <span className={order.profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {formatCurrency(order.profit)}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.margin ? `${order.margin.toFixed(2)}%` : '0%'}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {order.margin !== undefined && (
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          order.margin >= 20 ? 'bg-green-100 text-green-800' : 
+                          order.margin >= 10 ? 'bg-yellow-100 text-yellow-800' : 
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {order.margin.toFixed(1)}%
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
@@ -486,24 +498,62 @@ const Orders: React.FC = () => {
                           <h4 className="text-sm font-medium text-gray-900 mb-2">Order Details</h4>
                           
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <div>
-                              <p className="text-xs text-gray-500">Payment Method</p>
-                              <p className="text-sm">{order.payment_method_title}</p>
+                            <div className="bg-blue-50/50 p-3 rounded-lg">
+                              <p className="text-xs text-gray-500 flex items-center">
+                                <span className="w-3 h-3 bg-blue-500 rounded-full mr-1"></span>
+                                Payment Method
+                              </p>
+                              <p className="text-sm font-medium">{order.payment_method_title || 'N/A'}</p>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500">Shipping</p>
-                              <p className="text-sm">
+                            <div className="bg-blue-50/50 p-3 rounded-lg">
+                              <p className="text-xs text-gray-500 flex items-center">
+                                <span className="w-3 h-3 bg-blue-500 rounded-full mr-1"></span>
+                                Revenue
+                              </p>
+                              <p className="text-sm font-medium text-blue-600">
+                                {formatCurrency(order.total)}
+                              </p>
+                            </div>
+                            <div className="bg-red-50/50 p-3 rounded-lg">
+                              <p className="text-xs text-gray-500 flex items-center">
+                                <span className="w-3 h-3 bg-red-500 rounded-full mr-1"></span>
+                                Cost Total
+                              </p>
+                              <p className="text-sm font-medium text-red-600">
+                                {formatCurrency((order as any).cost_total || 0)}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div className="bg-green-50/50 p-3 rounded-lg">
+                              <p className="text-xs text-gray-500 flex items-center">
+                                <span className="w-3 h-3 bg-green-500 rounded-full mr-1"></span>
+                                Profit
+                              </p>
+                              <p className={`text-sm font-medium ${(order.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(order.profit || 0)}
+                                <span className="ml-2 text-xs">
+                                  ({order.margin ? order.margin.toFixed(1) : '0'}% margin)
+                                </span>
+                              </p>
+                            </div>
+                            <div className="bg-blue-50/50 p-3 rounded-lg">
+                              <p className="text-xs text-gray-500 flex items-center">
+                                <span className="w-3 h-3 bg-blue-500 rounded-full mr-1"></span>
+                                Shipping
+                              </p>
+                              <p className="text-sm font-medium">
                                 {formatCurrency(order.shipping_total)}
                               </p>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500">Cost Total</p>
-                              <p className="text-sm">
-                                {formatCurrency(
-                                  order.profit !== undefined && order.total
-                                    ? parseFloat(order.total) - order.profit
-                                    : 0
-                                )}
+                            <div className="bg-blue-50/50 p-3 rounded-lg">
+                              <p className="text-xs text-gray-500 flex items-center">
+                                <span className="w-3 h-3 bg-blue-500 rounded-full mr-1"></span>
+                                Tax
+                              </p>
+                              <p className="text-sm font-medium">
+                                {formatCurrency(order.total_tax)}
                               </p>
                             </div>
                           </div>
@@ -550,20 +600,32 @@ const Orders: React.FC = () => {
                                   <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                                     {item.quantity}
                                   </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-blue-600">
                                     {formatCurrency(item.price)}
                                   </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-red-600">
                                     {formatCurrency(item.cost_price || 0)}
                                   </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-blue-600">
                                     {formatCurrency(item.total)}
                                   </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                                    {formatCurrency(item.profit || 0)}
+                                  <td className="px-4 py-2 whitespace-nowrap text-sm">
+                                    {item.profit !== undefined && (
+                                      <span className={item.profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                        {formatCurrency(item.profit)}
+                                      </span>
+                                    )}
                                   </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                                    {item.margin ? `${item.margin.toFixed(2)}%` : '0%'}
+                                  <td className="px-4 py-2 whitespace-nowrap text-sm">
+                                    {item.margin !== undefined && (
+                                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                        item.margin >= 20 ? 'bg-green-100 text-green-800' : 
+                                        item.margin >= 10 ? 'bg-yellow-100 text-yellow-800' : 
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                        {item.margin.toFixed(1)}%
+                                      </span>
+                                    )}
                                   </td>
                                 </tr>
                               ))}

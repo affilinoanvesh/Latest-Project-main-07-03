@@ -13,14 +13,12 @@ import {
   syncProductsOnly,
   syncInventory,
   getLastSyncTimes,
-  testApiCredentials,
   syncOrdersByYear,
   syncOrdersByDateRange,
   forceDecemberSync,
   fetchDecemberOrdersDirectly,
   fetchDecemberOrdersInChunks,
-  hasDecemberOrders,
-  testDecemberApiConnection
+  hasDecemberOrders
 } from '../services/api';
 
 // Import component sections
@@ -211,14 +209,6 @@ const Settings: React.FC = () => {
         // Validate credentials before saving
         if (!apiCredentials.store_url || !apiCredentials.key || !apiCredentials.secret) {
           setErrorMessage('Please fill in all API credential fields');
-          setSaving(false);
-          return;
-        }
-        
-        // Test the credentials before saving
-        const isValid = await testApiCredentials(apiCredentials);
-        if (!isValid) {
-          setErrorMessage('Invalid API credentials. Please check your credentials and try again.');
           setSaving(false);
           return;
         }
@@ -425,11 +415,6 @@ const Settings: React.FC = () => {
     return await fetchDecemberOrdersInChunks(year, progressCallback);
   };
 
-  const testDecemberApiConnectionAdapter = async (year: number, progressCallback?: (progress: number) => void) => {
-    // The original function doesn't accept a progressCallback, so we ignore it
-    return await testDecemberApiConnection(year);
-  };
-
   // Handle regular December sync
   const handleDecemberSync = async () => {
     await handleDecemberOperation(
@@ -454,15 +439,6 @@ const Settings: React.FC = () => {
       'chunked',
       fetchDecemberOrdersInChunksAdapter,
       `Successfully fetched December ${decemberSyncYear} orders in chunks.`
-    );
-  };
-
-  // Handle test December connection
-  const handleTestDecemberConnection = async () => {
-    await handleDecemberOperation(
-      'testing',
-      testDecemberApiConnectionAdapter,
-      'Successfully tested December API connection.'
     );
   };
 
@@ -598,30 +574,6 @@ const Settings: React.FC = () => {
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>
-            </div>
-            
-            <div className="flex space-x-2">
-              <button
-                onClick={handleTestDecemberConnection}
-                disabled={decemberRegularSync.isOperating}
-                className={`px-3 py-2 rounded text-sm font-medium flex items-center ${
-                  decemberConnectionTest.isOperating 
-                    ? 'bg-gray-300 text-gray-700 cursor-not-allowed' 
-                    : 'bg-gray-500 text-white hover:bg-gray-600'
-                }`}
-              >
-                {decemberConnectionTest.isOperating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Testing...
-                  </>
-                ) : (
-                  <>
-                    <Wifi className="h-4 w-4 mr-2" />
-                    Test Connection
-                  </>
-                )}
-              </button>
             </div>
           </div>
           
@@ -762,9 +714,9 @@ const Settings: React.FC = () => {
           <div className="bg-yellow-100 p-3 rounded-md text-xs text-yellow-800">
             <p className="font-medium">Troubleshooting Tips:</p>
             <ul className="list-disc pl-4 mt-1 space-y-1">
-              <li>First use the "Test Connection" button to verify API connectivity for December data.</li>
-              <li>If the connection test succeeds but sync fails, try the "Chunked Fetch" method (recommended for large datasets).</li>
-              <li>The chunked fetch breaks December into smaller date ranges to avoid timeouts.</li>
+              <li>First use the "Sync Now" button to sync data.</li>
+              <li>If the sync fails, try the "Direct API Fetch" method.</li>
+              <li>The "Chunked Fetch" method breaks December into smaller date ranges to avoid timeouts.</li>
               <li>Check the browser console (F12) for detailed logs about the sync process.</li>
               <li>If you're getting Network Errors, verify your API credentials and URL in Settings.</li>
             </ul>

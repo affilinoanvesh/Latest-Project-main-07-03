@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { formatNZDate, formatRelativeTime, getCurrentNZDate } from '../utils/dateUtils';
-import { syncService } from '../services';
+import { formatNZDate, formatRelativeTime, getCurrentNZDate } from '../../utils/dateUtils';
+import { syncService } from '../../services';
 
 interface TimeDisplayProps {
   className?: string;
