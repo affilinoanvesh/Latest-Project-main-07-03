@@ -517,7 +517,13 @@ export function getLastCacheTime(): number | null {
  */
 export async function generateAllReconciliationSummaries(forceRefresh = false): Promise<StockReconciliationSummary[]> {
   try {
-    console.log('Generating all reconciliation summaries');
+    console.log('Generating all reconciliation summaries', {
+      forceRefresh,
+      hasCachedData: !!reconciliationCache,
+      cacheAge: reconciliationCache ? `${(Date.now() - lastCacheTime) / 1000} seconds` : 'N/A',
+      cacheDuration: `${CACHE_DURATION / 1000} seconds`,
+      caller: new Error().stack?.split('\n')[2]?.trim() || 'unknown'
+    });
     
     const now = Date.now();
     
