@@ -2,6 +2,8 @@ import { Order, OrderItem } from '../../../types';
 import { addStockMovement, invalidateReconciliationCache, getStockMovementsBySku } from '../stockReconciliation';
 import { supabase } from '../../../services/supabase';
 import { settingsService } from '../../../services';
+import { syncService } from '../../../services';
+import { updateLastSync } from '../sync';
 
 /**
  * Process an order and create stock movements for each line item
@@ -125,6 +127,99 @@ export async function processMultipleOrdersStockMovements(orders: Order[]): Prom
     return result;
   } catch (error: any) {
     console.error('Error processing multiple orders:', error);
+    throw error;
+  }
+}
+
+/**
+ * Process only new or updated orders since the last processing time
+ * This is an optimized version that only processes orders that have been created or updated
+ * since the last time this function was called
+ */
+export async function processNewOrdersStockMovements(orders: Order[]): Promise<{
+  processed: number;
+  skipped: number;
+  failed: number;
+  errors: Array<{ order: string; error: string }>;
+  lastProcessedTime: Date;
+}> {
+  try {
+    console.log('Processing new orders for stock movements');
+    
+    // Get the last processing time from sync service instead of settings
+    const lastSyncRecord = await syncService.getLastSyncByType('stock_movements');
+    const lastProcessingTime = lastSyncRecord?.timestamp || null;
+    
+    // Current time to use as the new last processing time
+    const currentTime = new Date();
+    
+    console.log(`Last stock movements processing time: ${lastProcessingTime ? lastProcessingTime.toISOString() : 'Never'}`);
+    
+    // Check if we should exclude on-hold orders
+    const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
+    
+    // Filter orders:
+    // 1. Remove on-hold orders if the setting is enabled
+    // 2. Only include orders that were created or updated after the last processing time
+    const filteredOrders = orders.filter(order => {
+      // Skip on-hold orders if the setting is enabled
+      if (excludeOnHold && order.status === 'on-hold') {
+        return false;
+      }
+      
+      // Only process completed or processing orders
+      if (order.status !== 'completed' && order.status !== 'processing') {
+        return false;
+      }
+      
+      // If we have a last processing time, only include orders that were created or updated after that time
+      if (lastProcessingTime) {
+        // Use date_created as the reference date since Order type doesn't have date_modified
+        const orderDate = order.date_created || new Date();
+        return orderDate > lastProcessingTime;
+      }
+      
+      // If we don't have a last processing time, include all orders
+      return true;
+    });
+    
+    console.log(`Found ${filteredOrders.length} orders to process out of ${orders.length} total orders`);
+    
+    const result = {
+      processed: 0,
+      skipped: orders.length - filteredOrders.length,
+      failed: 0,
+      errors: [] as Array<{ order: string; error: string }>,
+      lastProcessedTime: currentTime
+    };
+    
+    // Process each filtered order
+    for (const order of filteredOrders) {
+      try {
+        await processOrderStockMovements(order);
+        result.processed++;
+      } catch (error: any) {
+        result.failed++;
+        result.errors.push({
+          order: order.number,
+          error: error.message || 'Unknown error'
+        });
+      }
+    }
+    
+    // Update the last processing time using the sync service
+    if (result.processed > 0 || !lastProcessingTime) {
+      await syncService.updateLastSync('stock_movements', currentTime);
+      console.log(`Updated last stock movements processing time to: ${currentTime.toISOString()}`);
+    } else {
+      console.log('No orders processed, skipping timestamp update');
+    }
+    
+    console.log(`Processed ${result.processed} orders, skipped ${result.skipped}, failed ${result.failed}`);
+    
+    return result;
+  } catch (error: any) {
+    console.error('Error processing new orders:', error);
     throw error;
   }
 } 

@@ -4,11 +4,13 @@ import { invalidateReconciliationCache } from '../db/operations/stockReconciliat
 // Interface for application settings
 export interface AppSettings {
   exclude_on_hold_orders: boolean;
+  last_order_processing_time?: Date | null;
 }
 
 // Default settings
 const DEFAULT_SETTINGS: AppSettings = {
-  exclude_on_hold_orders: true
+  exclude_on_hold_orders: true,
+  last_order_processing_time: null
 };
 
 /**
@@ -109,6 +111,32 @@ export class SettingsService {
     invalidateReconciliationCache();
     
     console.log(`Updated exclude on-hold orders setting to: ${exclude}`);
+  }
+
+  /**
+   * Get the last order processing time
+   */
+  async getLastOrderProcessingTime(): Promise<Date | null> {
+    try {
+      const settings = await this.getSettings();
+      return settings.last_order_processing_time || null;
+    } catch (error) {
+      console.error('Error getting last order processing time:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Set the last order processing time
+   */
+  async setLastOrderProcessingTime(timestamp: Date): Promise<void> {
+    try {
+      await this.updateSettings({ last_order_processing_time: timestamp });
+      console.log(`Updated last order processing time to: ${timestamp.toISOString()}`);
+    } catch (error) {
+      console.error('Error setting last order processing time:', error);
+      throw error;
+    }
   }
 }
 

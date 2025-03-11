@@ -1,859 +1,96 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  RefreshCw, 
-  Plus, 
-  Search, 
-  AlertTriangle,
-  FileText,
-  Clock,
-  ChevronDown,
-  ChevronRight,
-  Info
-} from 'lucide-react';
-import { 
-  StockReconciliationSummary, 
-  StockMovement,
-  Product
-} from '../types';
-import {
-  generateAllReconciliationSummaries,
-  getStockMovementsBySku,
-  addStockMovement,
-  performReconciliation,
-  getLastCacheTime,
-  getAllStockMovements,
-  generateReconciliationSummary
-} from '../db/operations/stockReconciliation';
-import { processStockImportCsv } from '../utils/csv/stockImport';
-import { formatDateTime } from '../utils/formatters';
-import { loadReportData } from '../services/reports';
-import { productsService } from '../services';
-import { productVariationsService } from '../services';
-import { getProducts } from '../db/operations/products';
-import { saveAdditionalRevenue } from '../db/operations/additionalRevenue';
-import { saveExpense } from '../db/operations/expenses';
-import { getAdditionalRevenueCategories } from '../db/operations/additionalRevenue';
-import { getExpenseCategories } from '../db/operations/expenses';
-import { settingsService, ordersService } from '../services';
-import { processMultipleOrdersStockMovements } from '../db/operations/orders/processOrderStockMovements';
+import React from 'react';
+
+// Import context and hooks
+import { StockReconciliationProvider } from '../contexts/StockReconciliationContext';
+import { useStockReconciliation } from '../contexts/StockReconciliationContext';
+import { useStockReconciliationOperations } from '../hooks/useStockReconciliationOperations';
 
 // Import components
 import StockReconciliationTable from '../components/stockReconciliation/StockReconciliationTable';
-import StockMovementModal from '../components/stockReconciliation/StockMovementModal';
-import StockAdjustmentModal from '../components/stockReconciliation/StockAdjustmentModal';
-import ReconciliationModal from '../components/stockReconciliation/ReconciliationModal';
-import InitialStockModal from '../components/stockReconciliation/InitialStockModal';
-import ReconciliationReport from '../components/stockReconciliation/ReconciliationReport';
-import ReconciliationHistoryModal from '../components/stockReconciliation/ReconciliationHistoryModal';
+import StockReconciliationHeader from '../components/stockReconciliation/StockReconciliationHeader';
+import StockReconciliationFilters from '../components/stockReconciliation/StockReconciliationFilters';
+import StockReconciliationError from '../components/stockReconciliation/StockReconciliationError';
+import StockReconciliationModals from '../components/stockReconciliation/StockReconciliationModals';
 
-const StockReconciliation: React.FC = () => {
-  // UI state
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [discrepancyFilter, setDiscrepancyFilter] = useState<'all' | 'with_discrepancy' | 'no_discrepancy'>('all');
-  const [showHelp, setShowHelp] = useState(false);
-  
-  // Modal state
-  const [showMovementModal, setShowMovementModal] = useState(false);
-  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
-  const [showReconciliationModal, setShowReconciliationModal] = useState(false);
-  const [showInitialStockModal, setShowInitialStockModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [showReconciliationHistoryModal, setShowReconciliationHistoryModal] = useState(false);
-  
-  // Selected item for modals
-  const [selectedItem, setSelectedItem] = useState<StockReconciliationSummary | null>(null);
-  const [selectedSku, setSelectedSku] = useState<string | null>(null);
-  const [movements, setMovements] = useState<StockMovement[]>([]);
-  
-  // Data state
-  const [summaries, setSummaries] = useState<StockReconciliationSummary[]>([]);
-  const [filteredSummaries, setFilteredSummaries] = useState<StockReconciliationSummary[]>([]);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [lastOrderSync, setLastOrderSync] = useState<Date | null>(null);
-  
-  // Products state
-  const [products, setProducts] = useState<Array<{
-    sku: string;
-    name: string;
-    stock_quantity: number;
-    supplier_price?: number;
-    is_variation?: boolean;
-    parent_name?: string;
-  }>>([]);
+const StockReconciliationContent: React.FC = () => {
+  // Get state from context
+  const {
+    loading,
+    error,
+    lastUpdated,
+    searchTerm,
+    setSearchTerm,
+    discrepancyFilter,
+    setDiscrepancyFilter,
+    filteredSummaries,
+    summaries,
+    selectedSku,
+    selectedItem,
+    movements,
+    products
+  } = useStockReconciliation();
 
-  // New state for excludeOnHoldOrders
-  const [excludeOnHoldOrders, setExcludeOnHoldOrders] = useState<boolean>(true);
-
-  // Load data on initial page load
-  useEffect(() => {
-    // Try to load cached data from localStorage first
-    const cachedSummaries = localStorage.getItem('stockReconciliationSummaries');
-    const cachedProducts = localStorage.getItem('stockReconciliationProducts');
-    const cachedLastUpdated = localStorage.getItem('stockReconciliationLastUpdated');
-    
-    if (cachedSummaries && cachedProducts) {
-      try {
-        const parsedSummaries = JSON.parse(cachedSummaries);
-        const parsedProducts = JSON.parse(cachedProducts);
-        
-        setSummaries(parsedSummaries);
-        setFilteredSummaries(parsedSummaries);
-        setProducts(parsedProducts);
-        setDataLoaded(true);
-        setLoading(false); // Ensure loading is set to false when using cached data
-        
-        if (cachedLastUpdated) {
-          setLastUpdated(new Date(cachedLastUpdated));
-        }
-        
-        // Still load fresh data in the background, but don't show loading indicator
-        loadDataSilently(false);
-      } catch (error) {
-        console.error('Error parsing cached data:', error);
-        // If there's an error parsing the cached data, load fresh data
-        loadData(false);
-      }
-    } else {
-      // If no cached data is available, load fresh data
-      loadData(false);
-    }
-  }, []);
-
-  // Save data to localStorage when it changes
-  useEffect(() => {
-    if (summaries.length > 0 && products.length > 0) {
-      localStorage.setItem('stockReconciliationSummaries', JSON.stringify(summaries));
-      localStorage.setItem('stockReconciliationProducts', JSON.stringify(products));
-      if (lastUpdated) {
-        localStorage.setItem('stockReconciliationLastUpdated', lastUpdated.toISOString());
-      }
-    }
-  }, [summaries, products, lastUpdated]);
-
-  // Filter data when search term or filter changes
-  useEffect(() => {
-    filterData();
-  }, [summaries, searchTerm, discrepancyFilter]);
-
-  // Load data without showing loading indicator
-  const loadDataSilently = async (forceRefresh = false) => {
-    try {
-      // Don't set loading state
-      setError(null);
-      
-      let dataWasRefreshed = false;
-      
-      // Only load products if forceRefresh is true or products array is empty
-      if (forceRefresh || products.length === 0) {
-        try {
-          const [allProducts, allVariations] = await Promise.all([
-            productsService.getAll(),
-            productVariationsService.getAll()
-          ]);
-          
-          // Create a map of product IDs to names for variations
-          const productNameMap = new Map();
-          allProducts.forEach(product => {
-            productNameMap.set(product.id, product.name);
-          });
-          
-          // Format products - include all products with SKUs, not just non-variable ones
-          const formattedProducts = allProducts
-            .filter(product => !!product.sku)
-            .map(product => ({
-              sku: product.sku || '',
-              name: product.name || '',
-              stock_quantity: product.stock_quantity || 0,
-              supplier_price: product.supplier_price || 0,
-              is_variation: false
-            }));
-          
-          // Format variations - make sure we're getting all variations with SKUs
-          const formattedVariations = allVariations
-            .filter(variation => !!variation.sku)
-            .map(variation => ({
-              sku: variation.sku || '',
-              name: variation.name || '',
-              stock_quantity: variation.stock_quantity || 0,
-              supplier_price: variation.supplier_price || 0,
-              is_variation: true,
-              parent_name: productNameMap.get(variation.parent_id) || ''
-            }));
-          
-          // Combine products and variations
-          const combinedProducts = [...formattedProducts, ...formattedVariations];
-          
-          setProducts(combinedProducts);
-          dataWasRefreshed = true;
-        } catch (err) {
-          console.error('Failed to load products silently:', err);
-        }
-      }
-      
-      // Only load reconciliation data if forceRefresh is true or summaries array is empty
-      if (forceRefresh || summaries.length === 0) {
-        const data = await generateAllReconciliationSummaries(forceRefresh);
-        setSummaries(data);
-        setFilteredSummaries(data);
-        dataWasRefreshed = true;
-      }
-      
-      setDataLoaded(true);
-      
-      // Only update the lastUpdated timestamp if data was actually refreshed or if forceRefresh is true
-      if (forceRefresh || dataWasRefreshed) {
-        const cacheTime = getLastCacheTime();
-        setLastUpdated(cacheTime ? new Date(cacheTime) : new Date());
-      } else if (!lastUpdated) {
-        // If lastUpdated is null, set it to the cache time
-        const cacheTime = getLastCacheTime();
-        if (cacheTime) {
-          setLastUpdated(new Date(cacheTime));
-        }
-      }
-    } catch (err: any) {
-      console.error('Failed to load reconciliation data silently:', err);
-      // Don't show error for silent loading
-    }
-  };
-
-  // Load data with loading indicator
-  const loadData = async (forceRefresh = false) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      let dataWasRefreshed = false;
-      
-      // Only load products if forceRefresh is true or products array is empty
-      if (forceRefresh || products.length === 0) {
-        try {
-          const [allProducts, allVariations] = await Promise.all([
-            productsService.getAll(),
-            productVariationsService.getAll()
-          ]);
-          
-          // Create a map of product IDs to names for variations
-          const productNameMap = new Map();
-          allProducts.forEach(product => {
-            productNameMap.set(product.id, product.name);
-          });
-          
-          // Format products - include all products with SKUs, not just non-variable ones
-          const formattedProducts = allProducts
-            .filter(product => !!product.sku)
-            .map(product => ({
-              sku: product.sku || '',
-              name: product.name || '',
-              stock_quantity: product.stock_quantity || 0,
-              supplier_price: product.supplier_price || 0,
-              is_variation: false
-            }));
-          
-          // Format variations - make sure we're getting all variations with SKUs
-          const formattedVariations = allVariations
-            .filter(variation => !!variation.sku)
-            .map(variation => ({
-              sku: variation.sku || '',
-              name: variation.name || '',
-              stock_quantity: variation.stock_quantity || 0,
-              supplier_price: variation.supplier_price || 0,
-              is_variation: true,
-              parent_name: productNameMap.get(variation.parent_id) || ''
-            }));
-          
-          // Combine products and variations
-          const combinedProducts = [...formattedProducts, ...formattedVariations];
-          
-          setProducts(combinedProducts);
-          dataWasRefreshed = true;
-        } catch (err) {
-          console.error('Failed to load products:', err);
-        }
-      }
-      
-      // Only load reconciliation data if forceRefresh is true or summaries array is empty
-      if (forceRefresh || summaries.length === 0) {
-        const data = await generateAllReconciliationSummaries(forceRefresh);
-        setSummaries(data);
-        setFilteredSummaries(data);
-        dataWasRefreshed = true;
-      }
-      
-      setDataLoaded(true);
-      
-      // Only update the lastUpdated timestamp if data was actually refreshed or if forceRefresh is true
-      if (forceRefresh || dataWasRefreshed) {
-        const cacheTime = getLastCacheTime();
-        setLastUpdated(cacheTime ? new Date(cacheTime) : new Date());
-      } else if (!lastUpdated) {
-        // If lastUpdated is null, set it to the cache time
-        const cacheTime = getLastCacheTime();
-        if (cacheTime) {
-          setLastUpdated(new Date(cacheTime));
-        }
-      }
-      
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Failed to load reconciliation data:', err);
-      
-      // Handle specific API errors
-      if (err.status === 406) {
-        setError('API Error: Not Acceptable (406). There might be an issue with the API request format.');
-      } else {
-        setError(err.message || 'Failed to load reconciliation data');
-      }
-      
-      setLoading(false);
-    }
-  };
-
-  // Filter data based on search term and filters
-  const filterData = () => {
-    let filtered = [...summaries];
-    
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        item => 
-          item.sku.toLowerCase().includes(term) || 
-          item.product_name.toLowerCase().includes(term)
-      );
-    }
-    
-    // Apply discrepancy filter
-    if (discrepancyFilter === 'with_discrepancy') {
-      filtered = filtered.filter(item => item.discrepancy !== 0);
-    } else if (discrepancyFilter === 'no_discrepancy') {
-      filtered = filtered.filter(item => item.discrepancy === 0);
-    }
-    
-    setFilteredSummaries(filtered);
-  };
-
-  // Handle view movements
-  const handleViewMovements = async (sku: string) => {
-    try {
-      setSelectedSku(sku);
-      const movementData = await getStockMovementsBySku(sku);
-      setMovements(movementData);
-      
-      // Find the selected item
-      const item = summaries.find(s => s.sku === sku);
-      if (item) {
-        setSelectedItem(item);
-      }
-      
-      setShowMovementModal(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load movement data');
-    }
-  };
-
-  // Handle add adjustment
-  const handleAddAdjustment = (sku: string = '') => {
-    console.log('handleAddAdjustment called with SKU:', sku);
-    console.log('Current summaries:', summaries);
-    
-    // If a specific SKU is provided (from row button), find that item
-    if (sku) {
-      const item = summaries.find(s => s.sku === sku);
-      console.log('Found item for SKU:', item);
-      
-      if (item) {
-        console.log('Setting selectedItem for adjustment:', item);
-        setSelectedItem(item);
-        
-        // Open the modal with the selected item
-        setShowAdjustmentModal(true);
-      } else {
-        console.log('No item found for SKU:', sku);
-        setSelectedItem(null);
-        
-        // Open the modal without a selected item
-        setShowAdjustmentModal(true);
-      }
-    } else {
-      // If no SKU provided (from general "Add Adjustment" button), don't preselect
-      console.log('No SKU provided, not preselecting any item');
-      setSelectedItem(null);
-      
-      // Open the modal without a selected item
-      setShowAdjustmentModal(true);
-    }
-  };
-
-  // Handle reconcile
-  const handleReconcile = (sku: string) => {
-    const item = summaries.find(s => s.sku === sku);
-    if (item) {
-      setSelectedItem(item);
-      setShowReconciliationModal(true);
-    }
-  };
-
-  // Submit adjustment
-  const handleSubmitAdjustment = async (data: {
-    sku: string;
-    quantity: number;
-    reason: 'expiry' | 'damage' | 'theft' | 'correction' | 'other';
-    notes: string;
-    batchNumber?: string;
-    date: Date;
-  }) => {
-    try {
-      // Create the base movement data
-      const movementData = {
-        sku: data.sku,
-        movement_date: data.date,
-        quantity: data.quantity,
-        movement_type: 'adjustment' as const,
-        reason: data.reason,
-        notes: data.notes,
-        batch_number: data.batchNumber
-      };
-      
-      // Add the stock movement
-      const movementId = await addStockMovement(movementData);
-      
-      // Get the product details to use in descriptions
-      const product = summaries.find(s => s.sku === data.sku);
-      const productName = product ? product.product_name : data.sku;
-      
-      setShowAdjustmentModal(false);
-      
-      // Instead of refreshing all data, only update the specific SKU
-      try {
-        // Get the updated summary for just this SKU
-        const updatedSummary = await generateReconciliationSummary(data.sku);
-        
-        // Update the summaries array with the new data for this SKU
-        setSummaries(prevSummaries => {
-          const newSummaries = [...prevSummaries];
-          const index = newSummaries.findIndex(s => s.sku === data.sku);
-          if (index >= 0) {
-            newSummaries[index] = updatedSummary;
-          } else {
-            newSummaries.push(updatedSummary);
-          }
-          return newSummaries;
-        });
-        
-        // Also update filtered summaries if needed
-        setFilteredSummaries(prevFiltered => {
-          const newFiltered = [...prevFiltered];
-          const index = newFiltered.findIndex(s => s.sku === data.sku);
-          if (index >= 0) {
-            newFiltered[index] = updatedSummary;
-          }
-          return newFiltered;
-        });
-        
-        // If the user is currently viewing movements for this SKU, update those too
-        if (selectedSku === data.sku) {
-          const updatedMovements = await getStockMovementsBySku(data.sku);
-          setMovements(updatedMovements);
-        }
-      } catch (updateError) {
-        console.error('Error updating summary after adjustment:', updateError);
-        // If there's an error updating just this SKU, fall back to full refresh
-        loadDataSilently(true);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to add adjustment');
-    }
-  };
-
-  // Submit reconciliation
-  const handleSubmitReconciliation = async (data: {
-    sku: string;
-    actualQuantity: number;
-    notes: string;
-  }) => {
-    try {
-      await performReconciliation(
-        data.sku,
-        data.actualQuantity,
-        data.notes
-      );
-      
-      setShowReconciliationModal(false);
-      
-      // Instead of refreshing all data, only update the specific SKU
-      try {
-        // Get the updated summary for just this SKU
-        const updatedSummary = await generateReconciliationSummary(data.sku);
-        
-        // Update the summaries array with the new data for this SKU
-        setSummaries(prevSummaries => {
-          const newSummaries = [...prevSummaries];
-          const index = newSummaries.findIndex(s => s.sku === data.sku);
-          if (index >= 0) {
-            newSummaries[index] = updatedSummary;
-          } else {
-            newSummaries.push(updatedSummary);
-          }
-          return newSummaries;
-        });
-        
-        // Also update filtered summaries if needed
-        setFilteredSummaries(prevFiltered => {
-          const newFiltered = [...prevFiltered];
-          const index = newFiltered.findIndex(s => s.sku === data.sku);
-          if (index >= 0) {
-            newFiltered[index] = updatedSummary;
-          }
-          return newFiltered;
-        });
-        
-        // If the user is currently viewing movements for this SKU, update those too
-        if (selectedSku === data.sku) {
-          const updatedMovements = await getStockMovementsBySku(data.sku);
-          setMovements(updatedMovements);
-        }
-      } catch (updateError) {
-        console.error('Error updating summary after reconciliation:', updateError);
-        // If there's an error updating just this SKU, fall back to full refresh
-        loadDataSilently(true);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to perform reconciliation');
-    }
-  };
-
-  // Submit initial stock
-  const handleSubmitInitialStock = async (data: {
-    sku: string;
-    quantity: number;
-    notes: string;
-  }) => {
-    try {
-      await addStockMovement({
-        sku: data.sku,
-        movement_date: new Date(),
-        quantity: data.quantity,
-        movement_type: 'initial',
-        notes: data.notes
-      });
-      
-      setShowInitialStockModal(false);
-      
-      // Instead of refreshing all data, only update the specific SKU
-      try {
-        // Get the updated summary for just this SKU
-        const updatedSummary = await generateReconciliationSummary(data.sku);
-        
-        // Update the summaries array with the new data for this SKU
-        setSummaries(prevSummaries => {
-          const newSummaries = [...prevSummaries];
-          const index = newSummaries.findIndex(s => s.sku === data.sku);
-          if (index >= 0) {
-            newSummaries[index] = updatedSummary;
-          } else {
-            newSummaries.push(updatedSummary);
-          }
-          return newSummaries;
-        });
-        
-        // Also update filtered summaries if needed
-        setFilteredSummaries(prevFiltered => {
-          const newFiltered = [...prevFiltered];
-          const index = newFiltered.findIndex(s => s.sku === data.sku);
-          if (index >= 0) {
-            newFiltered[index] = updatedSummary;
-          }
-          return newFiltered;
-        });
-        
-        // If the user is currently viewing movements for this SKU, update those too
-        if (selectedSku === data.sku) {
-          const updatedMovements = await getStockMovementsBySku(data.sku);
-          setMovements(updatedMovements);
-        }
-      } catch (updateError) {
-        console.error('Error updating summary after adding initial stock:', updateError);
-        // If there's an error updating just this SKU, fall back to full refresh
-        loadDataSilently(true);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to add initial stock');
-    }
-  };
-
-  // Handle bulk upload
-  const handleBulkUpload = async (file: File) => {
-    try {
-      const result = await processStockImportCsv(file);
-      
-      if (result.success > 0) {
-        // Show success message
-        setShowInitialStockModal(false);
-        loadData(true);
-      } else {
-        setError('No items were imported successfully');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to process CSV file');
-    }
-  };
-
-  // Add a function to generate a report
-  const handleGenerateReport = () => {
-    setShowReportModal(true);
-  };
-
-  // Handle refresh button click
-  const handleRefresh = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Process all orders to create stock movements
-      const orders = await ordersService.getAll();
-      const result = await processMultipleOrdersStockMovements(orders);
-      
-      console.log(`Processed ${result.processed} orders for stock movements, ${result.failed} failed`);
-      
-      if (result.errors.length > 0) {
-        console.warn('Errors processing orders:', result.errors);
-      }
-      
-      // Force refresh data from the server
-      await loadData(true);
-    } catch (error: any) {
-      console.error('Error refreshing data:', error);
-      setError(error.message || 'Failed to refresh data');
-      setLoading(false);
-    }
-  };
-
-  // Load excludeOnHoldOrders setting
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const excludeOnHold = await settingsService.getExcludeOnHoldOrders();
-        setExcludeOnHoldOrders(excludeOnHold);
-      } catch (error) {
-        console.error('Error loading settings:', error);
-      }
-    };
-    
-    loadSettings();
-  }, []);
-
-  // Handle viewing reconciliation history
-  const handleViewReconciliationHistory = (sku: string) => {
-    const item = summaries.find(s => s.sku === sku);
-    if (item) {
-      setSelectedItem(item);
-      setSelectedSku(sku);
-      setShowReconciliationHistoryModal(true);
-    }
-  };
-
-  // Handle movement deletion
-  const handleMovementDeleted = async (movementId: number) => {
-    try {
-      // If we're viewing movements for a specific SKU, refresh the movements
-      if (selectedSku) {
-        const updatedMovements = await getStockMovementsBySku(selectedSku);
-        setMovements(updatedMovements);
-      }
-      
-      // Update the summary for this SKU
-      const updatedSummary = await generateReconciliationSummary(selectedSku || '');
-      
-      // Update the summaries array with the new data for this SKU
-      setSummaries(prevSummaries => {
-        const newSummaries = [...prevSummaries];
-        const index = newSummaries.findIndex(s => s.sku === selectedSku);
-        if (index >= 0) {
-          newSummaries[index] = updatedSummary;
-        }
-        return newSummaries;
-      });
-      
-      // Also update filtered summaries if needed
-      setFilteredSummaries(prevFiltered => {
-        const newFiltered = [...prevFiltered];
-        const index = newFiltered.findIndex(s => s.sku === selectedSku);
-        if (index >= 0) {
-          newFiltered[index] = updatedSummary;
-        }
-        return newFiltered;
-      });
-    } catch (error) {
-      console.error('Error handling movement deletion:', error);
-    }
-  };
+  // Get operations from hook
+  const {
+    showHelp,
+    setShowHelp,
+    showMovementModal,
+    setShowMovementModal,
+    showAdjustmentModal,
+    setShowAdjustmentModal,
+    showReconciliationModal,
+    setShowReconciliationModal,
+    showInitialStockModal,
+    setShowInitialStockModal,
+    showReportModal,
+    setShowReportModal,
+    showReconciliationHistoryModal,
+    setShowReconciliationHistoryModal,
+    handleViewMovements,
+    handleAddAdjustment,
+    handleReconcile,
+    handleSubmitAdjustment,
+    handleSubmitReconciliation,
+    handleSubmitInitialStock,
+    handleBulkUpload,
+    handleGenerateReport,
+    handleRefresh,
+    handleViewReconciliationHistory,
+    handleMovementDeleted
+  } = useStockReconciliationOperations();
 
   return (
     <div className="max-w-full mx-auto px-1 sm:px-2 py-4">
-      {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Stock Reconciliation</h1>
-        <p className="text-gray-600 mb-2">
-          Track and manage your inventory with detailed stock movements and reconciliation.
-        </p>
-      </div>
+      {/* Header with help section and action buttons */}
+      <StockReconciliationHeader
+        loading={loading}
+        lastUpdated={lastUpdated}
+        showHelp={showHelp}
+        setShowHelp={setShowHelp}
+        onAddInitial={() => setShowInitialStockModal(true)}
+        onAddAdjustment={() => handleAddAdjustment()}
+        onRefresh={handleRefresh}
+        onGenerateReport={handleGenerateReport}
+      />
       
-      {/* Collapsible help section */}
-      <div className="mb-6">
-        <button 
-          onClick={() => setShowHelp(!showHelp)}
-          className="flex items-center w-full text-left p-3 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
-        >
-          <Info className="h-5 w-5 text-blue-500 mr-2" />
-          <span className="text-blue-800 font-medium">How to Use Stock Reconciliation</span>
-          <span className="ml-auto">
-            {showHelp ? <ChevronDown className="h-5 w-5 text-blue-500" /> : <ChevronRight className="h-5 w-5 text-blue-500" />}
-          </span>
-        </button>
-        
-        {showHelp && (
-          <div className="mt-2 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
-              <h3 className="text-sm font-medium text-yellow-800 mb-1">Important: How This Works With WooCommerce</h3>
-              <p className="text-xs text-yellow-700">
-                This system tracks and records stock movements but does not directly modify your WooCommerce inventory. 
-                Actual stock levels are imported from WooCommerce. Use this tool to document and explain stock changes 
-                that have already occurred in your WooCommerce store.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h3 className="text-sm font-medium text-blue-700 mb-1">View Stock Movements</h3>
-                <p className="text-xs text-blue-600">
-                  Click the actions menu (three dots) and select "View Movements" to see all stock changes for a product.
-                </p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-blue-700 mb-1">Reconcile Stock</h3>
-                <p className="text-xs text-blue-600">
-                  Select "Reconcile" to record the current WooCommerce stock levels and document any discrepancies. Note: Actual stock is imported from WooCommerce and cannot be directly edited here.
-                </p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-blue-700 mb-1">Add Adjustments</h3>
-                <p className="text-xs text-blue-600">
-                  Use "Add Adjustment" to record stock changes for reasons like damage, theft, or corrections. These adjustments help track why stock levels changed in WooCommerce.
-                </p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-blue-700 mb-1">View Reconciliation History</h3>
-                <p className="text-xs text-blue-600">
-                  Select "Reconciliation History" to see past reconciliations and edit notes for better tracking.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      
-      {/* Action buttons */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
-        <div className="flex flex-wrap gap-1">
-          <button
-            onClick={() => setShowInitialStockModal(true)}
-            className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Add Initial
-          </button>
-          <button
-            onClick={() => handleAddAdjustment()}
-            className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs"
-            title="Add adjustment for any product (damage, theft, expiry, etc.)"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Add Adjustment
-          </button>
-          <button
-            onClick={handleRefresh}
-            className={`flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs`}
-            disabled={loading}
-            title="Process orders and refresh data from the server"
-          >
-            <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Processing...' : 'Process Orders & Refresh'}
-          </button>
-          <button
-            onClick={handleGenerateReport}
-            className="flex items-center px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
-          >
-            <FileText className="h-3 w-3 mr-1" />
-            Report
-          </button>
-        </div>
-      </div>
-      
-      {/* Show error message if there's an error */}
-      {error && (
-        <div className="mb-2 p-2 rounded-lg bg-red-100 text-red-700 flex items-center text-xs">
-          <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0" />
-          <div>
-            <p className="font-medium">Error loading data</p>
-            <p>{error}</p>
-            {summaries.length > 0 && lastUpdated && (
-              <p className="mt-0.5">Showing cached data from <span className="font-medium">{formatDateTime(lastUpdated)}</span></p>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* Only show the loading message if we're loading and don't have any data yet */}
-      {loading && summaries.length === 0 && (
-        <div className="mb-2 p-2 rounded-lg bg-yellow-100 text-yellow-800 flex items-center text-xs">
-          <AlertTriangle className="h-3 w-3 mr-1" />
-          <p>Loading stock reconciliation data... Please wait.</p>
-        </div>
-      )}
+      {/* Error message */}
+      <StockReconciliationError
+        error={error}
+        summariesLength={summaries.length}
+        lastUpdated={lastUpdated}
+        loading={loading}
+      />
       
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="p-2 border-b">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
-            <div className="relative w-full sm:w-auto">
-              <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                <Search className="h-3 w-3 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search by SKU or name"
-                className="pl-7 pr-2 py-1 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 w-full sm:w-48 text-xs"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
-            <div className="flex items-center space-x-1">
-              <span className="text-xs text-gray-600">Filter:</span>
-              <select
-                value={discrepancyFilter}
-                onChange={(e) => setDiscrepancyFilter(e.target.value as any)}
-                className="border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-              >
-                <option value="all">All Items</option>
-                <option value="with_discrepancy">With Discrepancy</option>
-                <option value="no_discrepancy">No Discrepancy</option>
-              </select>
-            </div>
-          </div>
-          
-          {lastUpdated && (
-            <div className="mt-1 flex items-center text-xs text-gray-500">
-              <Clock className="h-3 w-3 mr-1 text-blue-600" />
-              <span>Stock Data Updated: <span className="text-blue-600 font-medium">{formatDateTime(lastUpdated)}</span> (after clicking "Process Orders & Refresh")</span>
-            </div>
-          )}
-        </div>
+        {/* Search and filters */}
+        <StockReconciliationFilters
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          discrepancyFilter={discrepancyFilter}
+          setDiscrepancyFilter={setDiscrepancyFilter}
+        />
         
-        {/* Always show the table */}
+        {/* Data table */}
         <StockReconciliationTable 
           data={filteredSummaries}
           onViewMovements={handleViewMovements}
@@ -865,70 +102,42 @@ const StockReconciliation: React.FC = () => {
         />
       </div>
       
-      {/* Stock Movement Modal */}
-      {showMovementModal && selectedSku && (
-        <StockMovementModal
-          sku={selectedSku}
-          movements={movements}
-          onClose={() => setShowMovementModal(false)}
-          onMovementDeleted={handleMovementDeleted}
-        />
-      )}
-      
-      {/* Stock Adjustment Modal */}
-      {showAdjustmentModal && (() => {
-        console.log('Rendering StockAdjustmentModal with selectedItem:', selectedItem);
-        return (
-          <StockAdjustmentModal
-            products={products}
-            onSubmit={handleSubmitAdjustment}
-            onClose={() => setShowAdjustmentModal(false)}
-            sku={selectedItem?.sku}
-            productName={selectedItem?.product_name}
-            currentStock={selectedItem?.actual_stock}
-          />
-        );
-      })()}
-      
-      {/* Reconciliation Modal */}
-      {showReconciliationModal && selectedItem && (
-        <ReconciliationModal
-          sku={selectedItem.sku}
-          productName={selectedItem.product_name}
-          expectedStock={selectedItem.expected_stock}
-          actualStock={selectedItem.actual_stock}
-          onSubmit={handleSubmitReconciliation}
-          onClose={() => setShowReconciliationModal(false)}
-        />
-      )}
-      
-      {/* Initial Stock Modal */}
-      {showInitialStockModal && (
-        <InitialStockModal
-          onSubmit={handleSubmitInitialStock}
-          onBulkUpload={handleBulkUpload}
-          onClose={() => setShowInitialStockModal(false)}
-        />
-      )}
-
-      {/* Report Modal */}
-      {showReportModal && (
-        <ReconciliationReport
-          data={summaries}
-          onClose={() => setShowReportModal(false)}
-        />
-      )}
-
-      {/* Reconciliation History Modal */}
-      {showReconciliationHistoryModal && selectedItem && (
-        <ReconciliationHistoryModal
-          sku={selectedItem.sku}
-          productName={selectedItem.product_name}
-          onClose={() => setShowReconciliationHistoryModal(false)}
-          onRefresh={() => loadData(true)}
-        />
-      )}
+      {/* All modals */}
+      <StockReconciliationModals
+        showMovementModal={showMovementModal}
+        showAdjustmentModal={showAdjustmentModal}
+        showReconciliationModal={showReconciliationModal}
+        showInitialStockModal={showInitialStockModal}
+        showReportModal={showReportModal}
+        showReconciliationHistoryModal={showReconciliationHistoryModal}
+        selectedSku={selectedSku}
+        selectedItem={selectedItem}
+        movements={movements}
+        summaries={summaries}
+        products={products}
+        onCloseMovementModal={() => setShowMovementModal(false)}
+        onCloseAdjustmentModal={() => setShowAdjustmentModal(false)}
+        onCloseReconciliationModal={() => setShowReconciliationModal(false)}
+        onCloseInitialStockModal={() => setShowInitialStockModal(false)}
+        onCloseReportModal={() => setShowReportModal(false)}
+        onCloseReconciliationHistoryModal={() => setShowReconciliationHistoryModal(false)}
+        onSubmitAdjustment={handleSubmitAdjustment}
+        onSubmitReconciliation={handleSubmitReconciliation}
+        onSubmitInitialStock={handleSubmitInitialStock}
+        onBulkUpload={handleBulkUpload}
+        onMovementDeleted={handleMovementDeleted}
+        onRefresh={handleRefresh}
+      />
     </div>
+  );
+};
+
+// Wrap the content with the provider
+const StockReconciliation: React.FC = () => {
+  return (
+    <StockReconciliationProvider>
+      <StockReconciliationContent />
+    </StockReconciliationProvider>
   );
 };
 
