@@ -20,6 +20,7 @@ import InitialSetup from './pages/InitialSetup';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { initializeSupabase } from './utils/initializeSupabase';
+import { scheduleAutomaticDraftCleanup } from './services/api/orders';
 
 // Create a context for the navbar state
 interface NavbarContextType {
@@ -65,6 +66,10 @@ function App() {
     };
     
     initSupabase();
+    
+    // Schedule automatic cleanup of old draft orders
+    // Run every 24 hours
+    scheduleAutomaticDraftCleanup(24);
   }, []);
 
   return (

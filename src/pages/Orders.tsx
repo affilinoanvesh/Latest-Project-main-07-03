@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter, ChevronLeft, ChevronRight, BarChart2, CheckCircle } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter, ChevronLeft, ChevronRight, BarChart2, CheckCircle, Eraser } from 'lucide-react';
 import DateRangePicker from '../components/common/DateRangePicker';
 import { DateRange, Order } from '../types';
-import { fetchOrders, fetchInventory, fetchOverheadCosts, hasApiCredentials, deleteOrder } from '../services/api';
+import { fetchOrders, fetchInventory, fetchOverheadCosts, hasApiCredentials, deleteOrder, cleanupOldDraftOrders } from '../services/api';
 import { calculateProfitAndLoss } from '../services/pnl';
 import { processOrderStockMovements } from '../db/operations/orders/processOrderStockMovements';
 
@@ -34,6 +34,10 @@ const Orders: React.FC = () => {
   // Add a new state for tracking stock movement processing
   const [processingStockMovements, setProcessingStockMovements] = useState(false);
   const [stockMovementSuccess, setStockMovementSuccess] = useState<string | null>(null);
+
+  // Add a new state for tracking cleanup progress
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [cleanupSuccess, setCleanupSuccess] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -244,6 +248,33 @@ const Orders: React.FC = () => {
     }
   };
 
+  // Add a function to handle cleanup of old draft orders
+  const handleCleanupDraftOrders = async () => {
+    try {
+      setCleaningUp(true);
+      setError(null);
+      
+      // Clean up ALL draft orders by setting the threshold to 0 days
+      const deletedCount = await cleanupOldDraftOrders(0);
+      
+      setCleanupSuccess(`Successfully cleaned up ${deletedCount} draft orders`);
+      
+      // Refresh the orders list
+      if (deletedCount > 0) {
+        await loadData();
+      }
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setCleanupSuccess(null);
+      }, 3000);
+    } catch (error: any) {
+      setError(`Failed to clean up draft orders: ${error.message}`);
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -279,6 +310,16 @@ const Orders: React.FC = () => {
           >
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
+          </button>
+          
+          <button
+            onClick={handleCleanupDraftOrders}
+            disabled={cleaningUp || loading}
+            className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded flex items-center disabled:opacity-50"
+            title="Clean up all checkout-draft orders"
+          >
+            <Eraser className="h-4 w-4 mr-2" />
+            Clean Drafts
           </button>
         </div>
       </div>
@@ -745,6 +786,13 @@ const Orders: React.FC = () => {
         <div className="mb-4 p-2 bg-green-100 text-green-700 rounded flex items-center">
           <CheckCircle className="h-5 w-5 mr-2" />
           {stockMovementSuccess}
+        </div>
+      )}
+      
+      {cleanupSuccess && (
+        <div className="mb-4 p-3 bg-green-100 text-green-800 rounded flex items-center">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          {cleanupSuccess}
         </div>
       )}
     </div>

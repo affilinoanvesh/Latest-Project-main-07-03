@@ -757,13 +757,69 @@ const sanitizeNumericFields = (obj: any): any => {
   return result;
 };
 
+// Process an order before saving to check for draft orders
+const processOrderBeforeSave = async (order: Order): Promise<Order | null> => {
+  try {
+    // Only process orders that are not drafts themselves
+    if (order.status === 'checkout-draft') {
+      return order;
+    }
+    
+    // Look for a matching draft order
+    const draftOrder = await ordersService.findMatchingDraftOrder(order);
+    
+    if (draftOrder) {
+      console.log(`Found matching draft order #${draftOrder.number} for order #${order.number}`);
+      
+      // Update the draft order with the new status and data
+      const updatedOrder = await ordersService.updateDraftOrder(draftOrder.id, {
+        status: order.status,
+        customer_id: order.customer_id,
+        payment_method: order.payment_method,
+        payment_method_title: order.payment_method_title,
+        date_completed: order.date_completed,
+        shipping_lines: order.shipping_lines,
+        // Keep the original order number
+        number: draftOrder.number
+      });
+      
+      if (updatedOrder) {
+        console.log(`Successfully updated draft order #${draftOrder.number} to status ${order.status}`);
+        // Return null to indicate this order should be skipped in the bulk save
+        return null;
+      }
+    }
+    
+    return order;
+  } catch (error) {
+    console.error('Error processing order before save:', error);
+    return order;
+  }
+};
+
 // Save orders to Supabase
 const saveOrdersToSupabase = async (orders: Order[]): Promise<void> => {
   try {
     console.log(`Attempting to save ${orders.length} orders to Supabase`);
     
+    // Process each order to check for draft orders
+    const processedOrders: Order[] = [];
+    for (const order of orders) {
+      const processedOrder = await processOrderBeforeSave(order);
+      if (processedOrder) {
+        processedOrders.push(processedOrder);
+      }
+    }
+    
+    console.log(`After processing drafts, saving ${processedOrders.length} orders to Supabase`);
+    
+    if (processedOrders.length === 0) {
+      console.log('No orders to save after processing drafts');
+      return;
+    }
+    
     // Delete existing orders with the same IDs
-    const orderIds = orders.map(order => order.id);
+    const orderIds = processedOrders.map(order => order.id);
     console.log(`Deleting ${orderIds.length} existing orders with IDs: ${orderIds.slice(0, 5).join(', ')}${orderIds.length > 5 ? '...' : ''}`);
     
     // Batch delete existing orders
@@ -814,7 +870,7 @@ const saveOrdersToSupabase = async (orders: Order[]): Promise<void> => {
     
     // Filter orders to only include fields that exist in the database schema
     console.log('Filtering and sanitizing orders for database insertion');
-    const filteredOrders = orders.map(order => {
+    const filteredOrders = processedOrders.map(order => {
       // Sanitize numeric fields first
       const sanitizedOrder = sanitizeNumericFields(order);
       
@@ -909,4 +965,116 @@ const createSafeDate = (dateInput: string | Date | null): Date | null => {
     console.error('Invalid date input:', dateInput);
     return null;
   }
+};
+
+// Clean up old checkout draft orders
+export const cleanupOldDraftOrders = async (daysThreshold: number = 7): Promise<number> => {
+  try {
+    console.log(`Cleaning up checkout-draft orders with age threshold of ${daysThreshold} days${daysThreshold === 0 ? ' (all drafts will be deleted)' : ''}`);
+    
+    // Get all orders
+    const allOrders = await ordersService.getAll();
+    
+    // Get all checkout-draft orders
+    const draftOrders = allOrders.filter(order => order.status === 'checkout-draft');
+    
+    if (draftOrders.length === 0) {
+      console.log('No checkout-draft orders found');
+      return 0;
+    }
+    
+    console.log(`Found ${draftOrders.length} checkout-draft orders`);
+    
+    // If threshold is 0, delete all draft orders
+    if (daysThreshold === 0) {
+      console.log(`Threshold is 0, deleting all ${draftOrders.length} checkout-draft orders`);
+      const orderIdsToDelete = draftOrders.map(order => order.id);
+      
+      // Delete all draft orders
+      for (const batch of chunkArray(orderIdsToDelete, 100)) {
+        console.log(`Deleting batch of ${batch.length} draft orders`);
+        const { error } = await supabase
+          .from('orders')
+          .delete()
+          .in('id', batch);
+        
+        if (error) {
+          console.error('Error deleting draft orders:', error);
+          throw error;
+        }
+      }
+      
+      console.log(`Successfully deleted ${orderIdsToDelete.length} checkout-draft orders`);
+      return orderIdsToDelete.length;
+    }
+    
+    // Calculate the threshold date
+    const thresholdDate = new Date();
+    thresholdDate.setDate(thresholdDate.getDate() - daysThreshold);
+    
+    // Find draft orders that are older than the threshold
+    const oldDraftOrders = draftOrders.filter(order => {
+      if (!order.date_created) return false;
+      const orderDate = new Date(order.date_created);
+      return orderDate < thresholdDate;
+    });
+    
+    console.log(`Found ${oldDraftOrders.length} checkout-draft orders older than ${daysThreshold} days`);
+    
+    if (oldDraftOrders.length === 0) {
+      return 0;
+    }
+    
+    // Get the IDs of old draft orders to delete
+    const orderIdsToDelete = oldDraftOrders.map(order => order.id);
+    
+    // Delete the old draft orders
+    for (const batch of chunkArray(orderIdsToDelete, 100)) {
+      console.log(`Deleting batch of ${batch.length} old draft orders`);
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .in('id', batch);
+      
+      if (error) {
+        console.error('Error deleting old draft orders:', error);
+        throw error;
+      }
+    }
+    
+    console.log(`Successfully deleted ${orderIdsToDelete.length} old checkout-draft orders`);
+    return orderIdsToDelete.length;
+  } catch (error) {
+    console.error('Error cleaning up draft orders:', error);
+    throw error;
+  }
+};
+
+// Schedule automatic cleanup of old draft orders
+export const scheduleAutomaticDraftCleanup = (intervalHours: number = 24) => {
+  console.log(`Scheduling automatic cleanup of old draft orders every ${intervalHours} hours`);
+  
+  // Run an initial cleanup
+  setTimeout(() => {
+    cleanupOldDraftOrders(7)
+      .then(count => {
+        console.log(`Initial automatic cleanup: deleted ${count} old draft orders`);
+      })
+      .catch(error => {
+        console.error('Error during initial automatic draft cleanup:', error);
+      });
+  }, 60000); // Wait 1 minute after startup before running initial cleanup
+  
+  // Schedule regular cleanups
+  setInterval(() => {
+    cleanupOldDraftOrders(7)
+      .then(count => {
+        if (count > 0) {
+          console.log(`Automatic cleanup: deleted ${count} old draft orders`);
+        }
+      })
+      .catch(error => {
+        console.error('Error during automatic draft cleanup:', error);
+      });
+  }, intervalHours * 60 * 60 * 1000); // Convert hours to milliseconds
 };
