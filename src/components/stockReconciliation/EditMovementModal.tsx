@@ -7,7 +7,7 @@ import { formatNZDate } from '../../utils/dateUtils';
 interface EditMovementModalProps {
   movementId: number;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (wasDeleted: boolean) => void;
 }
 
 const EditMovementModal: React.FC<EditMovementModalProps> = ({
@@ -70,7 +70,7 @@ const EditMovementModal: React.FC<EditMovementModalProps> = ({
         batch_number: batchNumber || undefined
       });
       
-      onSuccess();
+      onSuccess(false);
       onClose();
     } catch (err) {
       console.error('Error updating movement:', err);
@@ -79,7 +79,7 @@ const EditMovementModal: React.FC<EditMovementModalProps> = ({
       setSaving(false);
     }
   };
-
+  
   // Handle delete
   const handleDelete = async () => {
     if (!movement) return;
@@ -90,7 +90,7 @@ const EditMovementModal: React.FC<EditMovementModalProps> = ({
       
       await deleteStockMovement(movementId);
       
-      onSuccess();
+      onSuccess(true);
       onClose();
     } catch (err) {
       console.error('Error deleting movement:', err);

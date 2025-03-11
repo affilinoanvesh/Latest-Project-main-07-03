@@ -10,6 +10,7 @@ interface StockMovementModalProps {
   sku: string;
   movements: StockMovement[];
   onClose: () => void;
+  onMovementDeleted?: (movementId: number) => void;
 }
 
 interface OrderItem {
@@ -24,7 +25,8 @@ interface OrderItem {
 const StockMovementModal: React.FC<StockMovementModalProps> = ({
   sku,
   movements,
-  onClose
+  onClose,
+  onMovementDeleted
 }) => {
   // View mode: 'orders' or 'movements'
   const [viewMode, setViewMode] = useState<'orders' | 'movements'>('movements');
@@ -193,6 +195,44 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
     }
   };
 
+  // Parse and format metadata from notes
+  const parseMetadata = (notes: string | undefined) => {
+    if (!notes) return { displayNotes: '-', metadata: null };
+    
+    // Check if notes contain metadata
+    const metadataMatch = notes.match(/\[METADATA\](.*)/s);
+    if (!metadataMatch) return { displayNotes: notes, metadata: null };
+    
+    try {
+      // Extract the regular notes (everything before [METADATA])
+      const regularNotes = notes.split('[METADATA]')[0].trim();
+      
+      // Parse the metadata JSON
+      const metadata = JSON.parse(metadataMatch[1]);
+      
+      return {
+        displayNotes: regularNotes || '-',
+        metadata
+      };
+    } catch (error) {
+      console.error('Error parsing metadata:', error);
+      return { displayNotes: notes, metadata: null };
+    }
+  };
+  
+  // Format metadata for display - simplified version
+  const formatMetadata = (metadata: any) => {
+    if (!metadata) return null;
+    
+    return (
+      <div className="mt-1 p-2 bg-gray-50 rounded-md border border-gray-200 text-xs">
+        <div className="text-gray-500">
+          This adjustment has additional metadata that is no longer used.
+        </div>
+      </div>
+    );
+  };
+
   // Handle page change
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
@@ -202,8 +242,30 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
   const totalPages = Math.ceil(filteredOrderCount / pageSize);
 
   // Handle edit success
-  const handleEditSuccess = () => {
-    // Refresh the movements data
+  const handleEditSuccess = (wasDeleted = false) => {
+    // If the movement was deleted, update the filtered movements array and close the modal if no movements left
+    if (wasDeleted) {
+      // Notify parent component about the deletion if callback exists
+      if (onMovementDeleted && editingMovementId) {
+        onMovementDeleted(editingMovementId);
+      }
+      
+      // Remove the deleted movement from the array
+      const updatedMovements = filteredMovements.filter(m => m.id !== editingMovementId);
+      
+      // Update the filtered movements array
+      if (updatedMovements.length === 0) {
+        // If no movements left, close the modal
+        onClose();
+      } else {
+        // Otherwise, update the filtered movements array and clear the editing state
+        setFilteredMovements(updatedMovements);
+        setEditingMovementId(null);
+      }
+      return;
+    }
+    
+    // Otherwise, refresh the movements data
     if (viewMode === 'orders') {
       loadOrders();
     } else {
@@ -497,7 +559,15 @@ const StockMovementModal: React.FC<StockMovementModalProps> = ({
                         {getReasonLabel(movement.reason)}
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-500">
-                        {movement.notes || '-'}
+                        {(() => {
+                          const { displayNotes, metadata } = parseMetadata(movement.notes);
+                          return (
+                            <>
+                              {displayNotes}
+                              {metadata && formatMetadata(metadata)}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500 text-center">
                         {movement.id && (

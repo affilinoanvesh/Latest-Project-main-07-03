@@ -111,16 +111,17 @@ const ExpiryDetails: React.FC<ExpiryDetailsProps> = ({
           id="lossAmount"
           type="number"
           step="0.01"
-          min="0"
           value={lossAmount === 0 ? '' : lossAmount}
           onChange={(e) => setLossAmount(parseFloat(e.target.value) || 0)}
           className="border rounded-lg p-2 w-full focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-300"
-          placeholder="Enter loss amount"
+          placeholder="Enter loss amount (optional)"
         />
         {selectedProduct.supplier_price && selectedProduct.supplier_price > 0 && (
           <p className="text-xs text-gray-600 mt-1">
             Suggested loss: ${maxPossibleLoss.toFixed(2)} 
             ({Math.abs(quantity)} units × ${selectedProduct.supplier_price})
+            <br />
+            This field is optional.
           </p>
         )}
       </div>

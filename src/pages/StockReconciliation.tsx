@@ -21,7 +21,8 @@ import {
   addStockMovement,
   performReconciliation,
   getLastCacheTime,
-  getAllStockMovements
+  getAllStockMovements,
+  generateReconciliationSummary
 } from '../db/operations/stockReconciliation';
 import { processStockImportCsv } from '../utils/csv/stockImport';
 import { formatDateTime } from '../utils/formatters';
@@ -404,10 +405,6 @@ const StockReconciliation: React.FC = () => {
     notes: string;
     batchNumber?: string;
     date: Date;
-    lossPercentage?: number;
-    isManualSale?: boolean;
-    saleAmount?: number;
-    lossAmount?: number;
   }) => {
     try {
       // Create the base movement data
@@ -421,21 +418,6 @@ const StockReconciliation: React.FC = () => {
         batch_number: data.batchNumber
       };
       
-      // Add additional metadata for reporting if it's an expiry
-      if (data.reason === 'expiry') {
-        // For expiry, add metadata about whether it was a manual sale and the loss amount
-        const metadata = {
-          is_manual_sale: data.isManualSale || false,
-          loss_percentage: data.lossPercentage || 0,
-          sale_amount: data.isManualSale ? data.saleAmount : 0,
-          loss_amount: data.lossAmount || 0
-        };
-        
-        // Add metadata to notes for reporting purposes
-        const metadataString = JSON.stringify(metadata);
-        movementData.notes = `${movementData.notes || ''}\n[METADATA]${metadataString}`;
-      }
-      
       // Add the stock movement
       const movementId = await addStockMovement(movementData);
       
@@ -443,72 +425,45 @@ const StockReconciliation: React.FC = () => {
       const product = summaries.find(s => s.sku === data.sku);
       const productName = product ? product.product_name : data.sku;
       
-      // Handle financial records for loss reasons (expiry, damage, theft)
-      if (['expiry', 'damage', 'theft'].includes(data.reason) && data.quantity < 0) {
-        try {
-          // Get categories for additional revenue and expenses
-          const revenueCategories = await getAdditionalRevenueCategories();
-          const expenseCategories = await getExpenseCategories();
-          
-          // Find or use default categories
-          const manualSaleCategory = revenueCategories.find(c => c.name === 'Manual Sales') || revenueCategories[0];
-          const inventoryLossCategory = expenseCategories.find(c => c.name === 'Inventory Loss') || expenseCategories[0];
-          const expiredProductsCategory = expenseCategories.find(c => c.name === 'Expired Products') || inventoryLossCategory;
-          const damagedProductsCategory = expenseCategories.find(c => c.name === 'Damaged Products') || inventoryLossCategory;
-          const theftCategory = expenseCategories.find(c => c.name === 'Inventory Theft') || inventoryLossCategory;
-          
-          // For manual sales of expired/damaged products
-          if (data.reason === 'expiry' && data.isManualSale && data.saleAmount && data.saleAmount > 0) {
-            // 1. Record the sale amount as additional revenue
-            await saveAdditionalRevenue({
-              amount: data.saleAmount,
-              date: data.date,
-              category_id: manualSaleCategory.id || 0,
-              category: manualSaleCategory.name,
-              description: `Manual sale of ${Math.abs(data.quantity)} units of ${productName} (${data.sku})`,
-              reference: `SM-${movementId}`, // Reference to stock movement
-              payment_method: 'cash', // Default or make configurable
-              tax_included: true // Configure as needed
-            });
-            
-            // 2. If there's still a loss (sale amount less than full value), record it as an expense
-            if (data.lossAmount && data.lossAmount > 0) {
-              await saveExpense({
-                amount: data.lossAmount,
-                date: data.date,
-                category: inventoryLossCategory.name,
-                description: `Partial loss on manual sale of ${Math.abs(data.quantity)} units of ${productName} (${data.sku})`,
-                reference: `SM-${movementId}`, // Reference to stock movement
-                tax_deductible: true // Configure as needed
-              });
-            }
-          } else {
-            // For complete loss (not sold), record the full cost as an expense
-            if (data.lossAmount && data.lossAmount > 0) {
-              // Select the appropriate category based on reason
-              const categoryName = 
-                data.reason === 'expiry' ? expiredProductsCategory.name : 
-                data.reason === 'damage' ? damagedProductsCategory.name : 
-                theftCategory.name;
-              
-              await saveExpense({
-                amount: data.lossAmount,
-                date: data.date,
-                category: categoryName,
-                description: `${data.reason} of ${Math.abs(data.quantity)} units of ${productName} (${data.sku})`,
-                reference: `SM-${movementId}`, // Reference to stock movement
-                tax_deductible: true // Configure as needed
-              });
-            }
-          }
-        } catch (categoryError) {
-          console.error('Error handling financial records:', categoryError);
-          // Continue with the process even if financial records fail
-        }
-      }
-      
       setShowAdjustmentModal(false);
-      loadData(true);
+      
+      // Instead of refreshing all data, only update the specific SKU
+      try {
+        // Get the updated summary for just this SKU
+        const updatedSummary = await generateReconciliationSummary(data.sku);
+        
+        // Update the summaries array with the new data for this SKU
+        setSummaries(prevSummaries => {
+          const newSummaries = [...prevSummaries];
+          const index = newSummaries.findIndex(s => s.sku === data.sku);
+          if (index >= 0) {
+            newSummaries[index] = updatedSummary;
+          } else {
+            newSummaries.push(updatedSummary);
+          }
+          return newSummaries;
+        });
+        
+        // Also update filtered summaries if needed
+        setFilteredSummaries(prevFiltered => {
+          const newFiltered = [...prevFiltered];
+          const index = newFiltered.findIndex(s => s.sku === data.sku);
+          if (index >= 0) {
+            newFiltered[index] = updatedSummary;
+          }
+          return newFiltered;
+        });
+        
+        // If the user is currently viewing movements for this SKU, update those too
+        if (selectedSku === data.sku) {
+          const updatedMovements = await getStockMovementsBySku(data.sku);
+          setMovements(updatedMovements);
+        }
+      } catch (updateError) {
+        console.error('Error updating summary after adjustment:', updateError);
+        // If there's an error updating just this SKU, fall back to full refresh
+        loadDataSilently(true);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to add adjustment');
     }
@@ -528,7 +483,44 @@ const StockReconciliation: React.FC = () => {
       );
       
       setShowReconciliationModal(false);
-      loadData(true);
+      
+      // Instead of refreshing all data, only update the specific SKU
+      try {
+        // Get the updated summary for just this SKU
+        const updatedSummary = await generateReconciliationSummary(data.sku);
+        
+        // Update the summaries array with the new data for this SKU
+        setSummaries(prevSummaries => {
+          const newSummaries = [...prevSummaries];
+          const index = newSummaries.findIndex(s => s.sku === data.sku);
+          if (index >= 0) {
+            newSummaries[index] = updatedSummary;
+          } else {
+            newSummaries.push(updatedSummary);
+          }
+          return newSummaries;
+        });
+        
+        // Also update filtered summaries if needed
+        setFilteredSummaries(prevFiltered => {
+          const newFiltered = [...prevFiltered];
+          const index = newFiltered.findIndex(s => s.sku === data.sku);
+          if (index >= 0) {
+            newFiltered[index] = updatedSummary;
+          }
+          return newFiltered;
+        });
+        
+        // If the user is currently viewing movements for this SKU, update those too
+        if (selectedSku === data.sku) {
+          const updatedMovements = await getStockMovementsBySku(data.sku);
+          setMovements(updatedMovements);
+        }
+      } catch (updateError) {
+        console.error('Error updating summary after reconciliation:', updateError);
+        // If there's an error updating just this SKU, fall back to full refresh
+        loadDataSilently(true);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to perform reconciliation');
     }
@@ -550,7 +542,44 @@ const StockReconciliation: React.FC = () => {
       });
       
       setShowInitialStockModal(false);
-      loadData(true);
+      
+      // Instead of refreshing all data, only update the specific SKU
+      try {
+        // Get the updated summary for just this SKU
+        const updatedSummary = await generateReconciliationSummary(data.sku);
+        
+        // Update the summaries array with the new data for this SKU
+        setSummaries(prevSummaries => {
+          const newSummaries = [...prevSummaries];
+          const index = newSummaries.findIndex(s => s.sku === data.sku);
+          if (index >= 0) {
+            newSummaries[index] = updatedSummary;
+          } else {
+            newSummaries.push(updatedSummary);
+          }
+          return newSummaries;
+        });
+        
+        // Also update filtered summaries if needed
+        setFilteredSummaries(prevFiltered => {
+          const newFiltered = [...prevFiltered];
+          const index = newFiltered.findIndex(s => s.sku === data.sku);
+          if (index >= 0) {
+            newFiltered[index] = updatedSummary;
+          }
+          return newFiltered;
+        });
+        
+        // If the user is currently viewing movements for this SKU, update those too
+        if (selectedSku === data.sku) {
+          const updatedMovements = await getStockMovementsBySku(data.sku);
+          setMovements(updatedMovements);
+        }
+      } catch (updateError) {
+        console.error('Error updating summary after adding initial stock:', updateError);
+        // If there's an error updating just this SKU, fall back to full refresh
+        loadDataSilently(true);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to add initial stock');
     }
@@ -624,6 +653,42 @@ const StockReconciliation: React.FC = () => {
       setSelectedItem(item);
       setSelectedSku(sku);
       setShowReconciliationHistoryModal(true);
+    }
+  };
+
+  // Handle movement deletion
+  const handleMovementDeleted = async (movementId: number) => {
+    try {
+      // If we're viewing movements for a specific SKU, refresh the movements
+      if (selectedSku) {
+        const updatedMovements = await getStockMovementsBySku(selectedSku);
+        setMovements(updatedMovements);
+      }
+      
+      // Update the summary for this SKU
+      const updatedSummary = await generateReconciliationSummary(selectedSku || '');
+      
+      // Update the summaries array with the new data for this SKU
+      setSummaries(prevSummaries => {
+        const newSummaries = [...prevSummaries];
+        const index = newSummaries.findIndex(s => s.sku === selectedSku);
+        if (index >= 0) {
+          newSummaries[index] = updatedSummary;
+        }
+        return newSummaries;
+      });
+      
+      // Also update filtered summaries if needed
+      setFilteredSummaries(prevFiltered => {
+        const newFiltered = [...prevFiltered];
+        const index = newFiltered.findIndex(s => s.sku === selectedSku);
+        if (index >= 0) {
+          newFiltered[index] = updatedSummary;
+        }
+        return newFiltered;
+      });
+    } catch (error) {
+      console.error('Error handling movement deletion:', error);
     }
   };
 
@@ -806,6 +871,7 @@ const StockReconciliation: React.FC = () => {
           sku={selectedSku}
           movements={movements}
           onClose={() => setShowMovementModal(false)}
+          onMovementDeleted={handleMovementDeleted}
         />
       )}
       
