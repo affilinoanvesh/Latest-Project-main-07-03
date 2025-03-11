@@ -1,5 +1,7 @@
 import { PurchaseOrder, PurchaseOrderItem } from '../../../types';
 import { addStockMovement, invalidateReconciliationCache } from '../stockReconciliation';
+import { addProductExpiry } from '../expiry';
+import { productsService, productVariationsService } from '../../../services';
 
 /**
  * Process a purchase order and create stock movements for each item
@@ -62,8 +64,61 @@ async function createStockMovementForPurchaseOrderItem(
       movement_type: 'purchase',
       reference_id: purchaseOrder.reference_number,
       notes: `Purchase Order #${purchaseOrder.reference_number}`,
-      batch_number: item.batch_number
+      batch_number: item.batch_number,
+      expiry_date: item.expiry_date
     });
+    
+    // Add to expiry tracking if expiry date and batch number are set
+    if (item.expiry_date && item.batch_number) {
+      try {
+        // Find product information by SKU
+        let productId = 0;
+        let variationId = undefined;
+        let productName = item.product_name;
+        
+        // Try to find the product ID by SKU
+        const product = await productsService.getProductBySku(item.sku);
+        if (product) {
+          productId = product.id;
+          productName = product.name || productName;
+        } else {
+          // Check if it's a variation
+          const variation = await productVariationsService.getVariationBySku(item.sku);
+          if (variation) {
+            productId = variation.parent_id;
+            variationId = variation.id;
+            
+            // Get the parent product name if needed
+            if (!productName) {
+              const parentProduct = await productsService.getById(variation.parent_id);
+              if (parentProduct) {
+                productName = `${parentProduct.name} - ${variation.name}`;
+              }
+            }
+          } else {
+            console.warn(`Could not find product or variation for SKU ${item.sku}, skipping expiry record`);
+            return;
+          }
+        }
+        
+        // Create expiry record with valid product ID
+        await addProductExpiry({
+          product_id: productId,
+          variation_id: variationId,
+          sku: item.sku,
+          product_name: productName,
+          expiry_date: item.expiry_date,
+          quantity: item.quantity_received,
+          batch_number: item.batch_number,
+          notes: `Added from Purchase Order #${purchaseOrder.reference_number} (Received)`
+        });
+        
+        console.log(`Added expiry record for ${item.sku} with batch ${item.batch_number}`);
+      } catch (expiryError) {
+        console.error('Error adding expiry record:', expiryError);
+        // Don't fail the whole operation if expiry record fails
+      }
+    }
   } catch (error) {
     console.error(`Error creating stock movement for purchase order item ${item.id}:`, error);
     throw error;

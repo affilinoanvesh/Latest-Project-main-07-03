@@ -12,6 +12,7 @@ export interface StockMovement {
   batch_number?: string;
   created_at?: Date;
   created_by?: string;
+  expiry_date?: Date;
   
   // UI helper properties
   product_name?: string;
