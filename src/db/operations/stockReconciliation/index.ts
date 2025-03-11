@@ -907,4 +907,101 @@ export async function deleteStockMovement(id: number): Promise<void> {
     console.error('Error deleting stock movement:', error);
     throw error;
   }
+}
+
+/**
+ * Clean up duplicate purchase stock movements
+ * This function identifies and removes duplicate stock movements for purchases
+ */
+export async function cleanupDuplicatePurchaseMovements(): Promise<{ removed: number, errors: string[] }> {
+  try {
+    console.log('Starting cleanup of duplicate purchase stock movements');
+    
+    const result = {
+      removed: 0,
+      errors: [] as string[]
+    };
+    
+    // Get all purchase movements
+    const { data: purchaseMovements, error: fetchError } = await supabase
+      .from('stock_movements')
+      .select('*')
+      .eq('movement_type', 'purchase')
+      .order('movement_date', { ascending: false });
+    
+    if (fetchError) {
+      console.error('Error fetching purchase movements:', fetchError);
+      throw fetchError;
+    }
+    
+    if (!purchaseMovements || purchaseMovements.length === 0) {
+      console.log('No purchase movements found to clean up');
+      return result;
+    }
+    
+    console.log(`Found ${purchaseMovements.length} purchase movements to analyze`);
+    
+    // Group movements by reference_id (purchase order number) and sku
+    const movementGroups: Record<string, any[]> = {};
+    
+    for (const movement of purchaseMovements) {
+      if (!movement.reference_id || !movement.sku) continue;
+      
+      const key = `${movement.reference_id}:${movement.sku}:${movement.quantity}`;
+      if (!movementGroups[key]) {
+        movementGroups[key] = [];
+      }
+      movementGroups[key].push(movement);
+    }
+    
+    // Find groups with duplicates
+    const duplicateGroups = Object.entries(movementGroups)
+      .filter(([_, movements]) => movements.length > 1);
+    
+    console.log(`Found ${duplicateGroups.length} groups with duplicate purchase movements`);
+    
+    // Process each group with duplicates
+    for (const [key, movements] of duplicateGroups) {
+      try {
+        // Sort by id (ascending) to keep the oldest one
+        movements.sort((a, b) => a.id - b.id);
+        
+        // Keep the first one, delete the rest
+        const [keep, ...duplicates] = movements;
+        
+        console.log(`Keeping movement ID ${keep.id} for ${key}, removing ${duplicates.length} duplicates`);
+        
+        // Delete duplicates
+        const duplicateIds = duplicates.map(d => d.id);
+        const { error: deleteError } = await supabase
+          .from('stock_movements')
+          .delete()
+          .in('id', duplicateIds);
+        
+        if (deleteError) {
+          console.error(`Error deleting duplicate purchase movements for ${key}:`, deleteError);
+          result.errors.push(`Failed to delete duplicates for ${key}: ${deleteError.message}`);
+        } else {
+          result.removed += duplicateIds.length;
+        }
+      } catch (error: any) {
+        console.error(`Error processing duplicate purchase group ${key}:`, error);
+        result.errors.push(`Error processing ${key}: ${error.message}`);
+      }
+    }
+    
+    // Invalidate cache since data has changed
+    if (result.removed > 0) {
+      invalidateReconciliationCache();
+    }
+    
+    console.log(`Purchase cleanup complete. Removed ${result.removed} duplicate movements with ${result.errors.length} errors`);
+    return result;
+  } catch (error: any) {
+    console.error('Error cleaning up duplicate purchase stock movements:', error);
+    return {
+      removed: 0,
+      errors: [error.message || 'Unknown error']
+    };
+  }
 } 

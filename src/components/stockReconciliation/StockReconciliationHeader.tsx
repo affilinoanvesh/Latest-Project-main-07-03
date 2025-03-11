@@ -5,7 +5,8 @@ import {
   FileText,
   Info,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { formatDateTime } from '../../utils/formatters';
 
@@ -18,6 +19,7 @@ interface StockReconciliationHeaderProps {
   onAddAdjustment: () => void;
   onRefresh: () => void;
   onGenerateReport: () => void;
+  onCleanupDuplicates?: () => void;
 }
 
 const StockReconciliationHeader: React.FC<StockReconciliationHeaderProps> = ({
@@ -28,7 +30,8 @@ const StockReconciliationHeader: React.FC<StockReconciliationHeaderProps> = ({
   onAddInitial,
   onAddAdjustment,
   onRefresh,
-  onGenerateReport
+  onGenerateReport,
+  onCleanupDuplicates
 }) => {
   return (
     <>
@@ -128,6 +131,16 @@ const StockReconciliationHeader: React.FC<StockReconciliationHeaderProps> = ({
             <FileText className="h-3 w-3 mr-1" />
             Report
           </button>
+          {onCleanupDuplicates && (
+            <button
+              onClick={onCleanupDuplicates}
+              className="flex items-center px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+              title="Clean up duplicate purchase movements"
+            >
+              <Trash2 className="h-3 w-3 mr-1" />
+              Fix Duplicates
+            </button>
+          )}
         </div>
       </div>
       

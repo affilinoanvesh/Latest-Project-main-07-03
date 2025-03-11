@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 // Import context and hooks
 import { StockReconciliationProvider } from '../contexts/StockReconciliationContext';
@@ -11,6 +11,9 @@ import StockReconciliationHeader from '../components/stockReconciliation/StockRe
 import StockReconciliationFilters from '../components/stockReconciliation/StockReconciliationFilters';
 import StockReconciliationError from '../components/stockReconciliation/StockReconciliationError';
 import StockReconciliationModals from '../components/stockReconciliation/StockReconciliationModals';
+
+// Import cleanup utility
+import { cleanupDuplicatePurchases } from '../utils/stockCleanup';
 
 const StockReconciliationContent: React.FC = () => {
   // Get state from context
@@ -27,8 +30,12 @@ const StockReconciliationContent: React.FC = () => {
     selectedSku,
     selectedItem,
     movements,
-    products
+    products,
+    setError
   } = useStockReconciliation();
+
+  // Local state for cleanup loading
+  const [cleanupLoading, setCleanupLoading] = useState(false);
 
   // Get operations from hook
   const {
@@ -59,11 +66,34 @@ const StockReconciliationContent: React.FC = () => {
     handleMovementDeleted
   } = useStockReconciliationOperations();
 
+  // Handle cleanup of duplicate purchase movements
+  const handleCleanupDuplicates = async () => {
+    try {
+      setCleanupLoading(true);
+      const result = await cleanupDuplicatePurchases();
+      
+      if (result.success) {
+        // Show success message
+        setError(`Successfully removed ${result.removed} duplicate purchase movements.`);
+        
+        // Refresh data to show updated values
+        await handleRefresh();
+      } else {
+        // Show error message
+        setError(`Failed to clean up duplicates: ${result.errors.join(', ')}`);
+      }
+    } catch (error: any) {
+      setError(`Error cleaning up duplicates: ${error.message}`);
+    } finally {
+      setCleanupLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-full mx-auto px-1 sm:px-2 py-4">
       {/* Header with help section and action buttons */}
       <StockReconciliationHeader
-        loading={loading}
+        loading={loading || cleanupLoading}
         lastUpdated={lastUpdated}
         showHelp={showHelp}
         setShowHelp={setShowHelp}
@@ -71,6 +101,7 @@ const StockReconciliationContent: React.FC = () => {
         onAddAdjustment={() => handleAddAdjustment()}
         onRefresh={handleRefresh}
         onGenerateReport={handleGenerateReport}
+        onCleanupDuplicates={handleCleanupDuplicates}
       />
       
       {/* Error message */}
@@ -78,7 +109,7 @@ const StockReconciliationContent: React.FC = () => {
         error={error}
         summariesLength={summaries.length}
         lastUpdated={lastUpdated}
-        loading={loading}
+        loading={loading || cleanupLoading}
       />
       
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -97,7 +128,7 @@ const StockReconciliationContent: React.FC = () => {
           onReconcile={handleReconcile}
           onAddAdjustment={handleAddAdjustment}
           onViewReconciliationHistory={handleViewReconciliationHistory}
-          loading={loading}
+          loading={loading || cleanupLoading}
           isFiltered={searchTerm !== '' || discrepancyFilter !== 'all'}
         />
       </div>

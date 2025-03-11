@@ -2,6 +2,7 @@ import { PurchaseOrder, PurchaseOrderItem } from '../../../types';
 import { addStockMovement, invalidateReconciliationCache } from '../stockReconciliation';
 import { addProductExpiry } from '../expiry';
 import { productsService, productVariationsService } from '../../../services';
+import { supabase } from '../../../services/supabase';
 
 /**
  * Process a purchase order and create stock movements for each item
@@ -52,6 +53,22 @@ async function createStockMovementForPurchaseOrderItem(
     // Skip items with no received quantity
     if (!item.quantity_received || item.quantity_received <= 0) {
       console.warn(`Purchase order item ${item.id} has no received quantity, skipping stock movement`);
+      return;
+    }
+    
+    // Check if a stock movement for this purchase order item already exists
+    const { data: existingMovements, error: queryError } = await supabase
+      .from('stock_movements')
+      .select('id')
+      .eq('sku', item.sku)
+      .eq('movement_type', 'purchase')
+      .eq('reference_id', purchaseOrder.reference_number)
+      .eq('quantity', item.quantity_received);
+    
+    if (queryError) {
+      console.error(`Error checking for existing stock movements: ${queryError.message}`);
+    } else if (existingMovements && existingMovements.length > 0) {
+      console.log(`Stock movement for purchase order #${purchaseOrder.reference_number}, item ${item.sku} already exists. Skipping.`);
       return;
     }
     
