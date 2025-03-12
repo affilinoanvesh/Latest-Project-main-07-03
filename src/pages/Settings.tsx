@@ -27,6 +27,7 @@ import OverheadCostsSection from '../components/settings/OverheadCostsSection';
 import SyncOptionsSection from '../components/settings/SyncOptionsSection';
 import SyncStatusSection from '../components/settings/SyncStatusSection';
 import OrderSettingsSection from '../components/settings/OrderSettingsSection';
+import CacheManagementSection from '../components/settings/CacheManagementSection';
 import { settingsService } from '../services';
 
 // Custom hook for operation state management
@@ -754,6 +755,17 @@ const Settings: React.FC = () => {
         onAddCost={handleAddOverheadCost}
         onRemoveCost={handleRemoveOverheadCost}
         onCostChange={handleOverheadCostChange}
+      />
+      
+      {/* Cache Management Section */}
+      <CacheManagementSection 
+        onCacheCleared={() => {
+          setSuccessMessage('Browser cache cleared successfully! You may need to refresh the page.');
+          // Clear success message after 5 seconds
+          setTimeout(() => {
+            setSuccessMessage('');
+          }, 5000);
+        }}
       />
       
       {/* Save Button */}
