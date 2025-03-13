@@ -80,7 +80,15 @@ const fetchAllOrders = async (startDate?: string, endDate?: string, progressCall
   }
   
   if (!endDate) {
-    endDate = formatDateForAPI(new Date());
+    // Add a small buffer to ensure we get the most recent orders
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1); // Add 1 day as buffer
+    endDate = formatDateForAPI(tomorrowDate);
+  } else {
+    // Add a small buffer to the provided end date
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1); // Add 1 day as buffer
+    endDate = formatDateForAPI(endDateObj);
   }
   
   // Check if this is a December date range
@@ -123,6 +131,12 @@ const fetchAllOrders = async (startDate?: string, endDate?: string, progressCall
       }
     } else {
       console.log(`Found ${totalOrders} orders across ${totalPages} pages for date range ${startDate} to ${endDate}`);
+      
+      // Log the first and last order dates if available
+      if (initialResponse.data.length > 0) {
+        console.log(`First order date: ${initialResponse.data[0].date_created}`);
+        console.log(`Last order date: ${initialResponse.data[initialResponse.data.length - 1].date_created}`);
+      }
     }
     
     // Add first page results
@@ -691,13 +705,169 @@ export const syncOrdersByDateRange = async (startDate: string, endDate: string, 
   try {
     console.log(`Syncing orders for date range: ${startDate} to ${endDate}`);
     
-    // Use the generic fetch function with regular strategy
-    return await fetchOrdersByDateRange({
-      startDate,
-      endDate,
-      strategy: 'regular',
-      progressCallback
+    // Fetch orders from WooCommerce API for the specified date range
+    const apiOrders = await fetchAllOrders(startDate, endDate, (progress) => {
+      safeUpdateProgress(progressCallback, progress * 0.4); // 0-40% progress
     });
+    
+    // Process orders to include variation information
+    const processedApiOrders = await processBatches(
+      apiOrders,
+      async (batch) => await processOrdersWithVariations(batch),
+      50, // Process 50 orders at a time
+      10, // 10ms delay between batches
+      (progress) => {
+        safeUpdateProgress(progressCallback, 40 + progress * 0.2); // 40-60% progress
+      }
+    );
+    
+    // Get existing orders from the database for this date range
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    
+    // Add a small buffer to end date to ensure we get all orders
+    const adjustedEndDateObj = new Date(endDateObj);
+    adjustedEndDateObj.setDate(adjustedEndDateObj.getDate() + 1);
+    
+    console.log(`Getting existing orders from database for date range: ${startDateObj.toISOString()} to ${adjustedEndDateObj.toISOString()}`);
+    const existingOrders = await ordersService.getOrdersByDateRange(startDateObj, adjustedEndDateObj);
+    
+    console.log(`Found ${existingOrders.length} existing orders and ${processedApiOrders.length} orders from API for date range`);
+    
+    // Create maps for faster lookups
+    const existingOrdersMap = new Map(existingOrders.map(order => [order.id, order]));
+    const apiOrdersMap = new Map(processedApiOrders.map(order => [order.id, order]));
+    
+    // Identify orders that need to be updated (status changed)
+    const ordersToUpdate: Order[] = [];
+    const newOrders: Order[] = [];
+    
+    // Find orders that need updating (status changed)
+    for (const apiOrder of processedApiOrders) {
+      const existingOrder = existingOrdersMap.get(apiOrder.id);
+      
+      if (!existingOrder) {
+        // This is a new order
+        newOrders.push(apiOrder);
+      } else if (existingOrder.status !== apiOrder.status) {
+        // Status has changed, update this order
+        console.log(`Order #${apiOrder.number} status changed from ${existingOrder.status} to ${apiOrder.status}`);
+        ordersToUpdate.push(apiOrder);
+      }
+    }
+    
+    console.log(`Found ${newOrders.length} new orders and ${ordersToUpdate.length} orders with status changes`);
+    
+    // Only save orders that are new or have status changes
+    const ordersToSave = [...newOrders, ...ordersToUpdate];
+    
+    if (ordersToSave.length > 0) {
+      safeUpdateProgress(progressCallback, 60);
+      
+      // Delete existing orders that need updating
+      if (ordersToUpdate.length > 0) {
+        const updateIds = ordersToUpdate.map(order => order.id);
+        console.log(`Deleting ${ordersToUpdate.length} orders that need updating`);
+        
+        for (const batch of chunkArray(updateIds, 100)) {
+          const { error } = await supabase
+            .from('orders')
+            .delete()
+            .in('id', batch);
+          
+          if (error) {
+            console.error('Error deleting orders for update:', error);
+            throw error;
+          }
+        }
+      }
+      
+      // Process and save the orders
+      const processedOrders: Order[] = [];
+      for (const order of ordersToSave) {
+        const processedOrder = await processOrderBeforeSave(order);
+        if (processedOrder) {
+          processedOrders.push(processedOrder);
+        }
+      }
+      
+      safeUpdateProgress(progressCallback, 80);
+      
+      // Define allowed fields and prepare orders for insertion
+      const allowedFields = [
+        'id', 'number', 'date_created', 'status', 'total', 'subtotal', 'total_tax',
+        'shipping_total', 'discount_total', 'customer_id', 'customer_note',
+        'payment_method', 'payment_method_title', 'line_items', 'shipping_lines',
+        'fee_lines', 'coupon_lines', 'created_at', 'profit', 'margin'
+      ];
+      
+      const jsonbFields = ['line_items', 'shipping_lines', 'fee_lines', 'coupon_lines'];
+      
+      // Filter and sanitize orders
+      const filteredOrders = processedOrders.map(order => {
+        // Sanitize numeric fields
+        const sanitizedOrder = sanitizeNumericFields(order);
+        
+        // Sanitize JSONB fields
+        const jsonbSanitizedOrder = sanitizeJsonbFields(sanitizedOrder, jsonbFields);
+        
+        // Calculate profit and margin
+        if (jsonbSanitizedOrder.line_items && Array.isArray(jsonbSanitizedOrder.line_items)) {
+          let totalProfit = 0;
+          let totalRevenue = 0;
+          
+          jsonbSanitizedOrder.line_items.forEach((item: any) => {
+            const itemTotal = Number(item.total) || 0;
+            const costPrice = Number(item.cost_price) || 0;
+            const quantity = Number(item.quantity) || 0;
+            const itemCost = costPrice * quantity;
+            const itemProfit = itemTotal - itemCost;
+            
+            item.profit = itemProfit;
+            item.margin = itemTotal > 0 ? (itemProfit / itemTotal) * 100 : 0;
+            
+            totalProfit += itemProfit;
+            totalRevenue += itemTotal;
+          });
+          
+          jsonbSanitizedOrder.profit = totalProfit;
+          jsonbSanitizedOrder.margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+        }
+        
+        // Ensure required fields are present
+        const filtered = filterObjectToSchema(jsonbSanitizedOrder, allowedFields);
+        
+        if (!filtered.number) filtered.number = order.number;
+        if (!filtered.date_created && order.date_created) filtered.date_created = order.date_created;
+        if (!filtered.status) filtered.status = order.status;
+        
+        return filtered as Omit<Order, 'id'>;
+      });
+      
+      // Insert orders in batches
+      let insertedCount = 0;
+      for (const batch of chunkArray(filteredOrders, 100)) {
+        try {
+          const result = await ordersService.bulkAdd(batch);
+          insertedCount += result.length;
+        } catch (error) {
+          console.error('Error inserting batch of orders:', error);
+          throw error;
+        }
+      }
+      
+      console.log(`Successfully saved ${insertedCount} orders to Supabase`);
+      
+      // Update last sync timestamp
+      await updateLastSync('orders');
+    } else {
+      console.log('No orders need updating or adding');
+    }
+    
+    safeUpdateProgress(progressCallback, 100);
+    
+    // Return all orders for this date range (existing + new)
+    return await ordersService.getOrdersByDateRange(startDateObj, adjustedEndDateObj);
   } catch (error) {
     console.error('Error syncing orders by date range:', error);
     throw error;
