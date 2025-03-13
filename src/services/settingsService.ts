@@ -24,18 +24,21 @@ export class SettingsService {
    */
   async getSettings(): Promise<AppSettings> {
     try {
+      // First try to get settings with id=1 specifically
       const { data, error } = await supabase
         .from(this.tableName)
         .select('*')
-        .single();
+        .eq('id', 1)
+        .maybeSingle(); // Use maybeSingle instead of single to avoid errors if no record exists
       
       if (error) {
         console.error('Error fetching settings:', error);
-        // If no settings exist yet, return defaults
-        if (error.code === 'PGRST116') {
-          return { ...DEFAULT_SETTINGS };
-        }
         throw error;
+      }
+      
+      // If no settings found with id=1, return defaults
+      if (!data) {
+        return { ...DEFAULT_SETTINGS };
       }
       
       // Merge with defaults to ensure all properties exist
@@ -51,13 +54,14 @@ export class SettingsService {
    */
   async updateSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
     try {
-      // First check if settings exist
+      // First check if settings with id=1 exist
       const { data: existingData, error: checkError } = await supabase
         .from(this.tableName)
         .select('*')
-        .single();
+        .eq('id', 1)
+        .maybeSingle(); // Use maybeSingle instead of single
       
-      if (checkError && checkError.code !== 'PGRST116') {
+      if (checkError) {
         console.error('Error checking settings existence:', checkError);
         throw checkError;
       }
@@ -65,17 +69,25 @@ export class SettingsService {
       let result;
       
       if (!existingData) {
-        // Create new settings record
+        // Create new settings record with a key value
         result = await supabase
           .from(this.tableName)
-          .insert([{ id: 1, ...DEFAULT_SETTINGS, ...settings }])
+          .insert([{ 
+            id: 1, 
+            key: 'app_settings', // Add a key value to satisfy the not-null constraint
+            ...DEFAULT_SETTINGS, 
+            ...settings 
+          }])
           .select()
           .single();
       } else {
         // Update existing settings
         result = await supabase
           .from(this.tableName)
-          .update(settings)
+          .update({
+            ...settings,
+            key: existingData.key || 'app_settings' // Ensure key is preserved or set if null
+          })
           .eq('id', 1)
           .select()
           .single();
