@@ -112,11 +112,15 @@ const AppLayout = () => {
   return (
     <div className="flex min-h-screen bg-gray-100">
       <Navbar />
-      <div className={`flex-1 transition-all duration-300 ${isCollapsed ? 'ml-16' : 'ml-56'}`}>
-        <div className="px-6 py-3 bg-white shadow-sm border-b">
+      <div 
+        className={`flex-1 transition-all duration-300 w-full max-w-full overflow-hidden ${
+          isCollapsed ? 'ml-16 md:ml-16' : 'ml-0 md:ml-56'
+        }`}
+      >
+        <div className="px-3 sm:px-6 py-3 bg-white shadow-sm border-b">
           <TimeDisplay />
         </div>
-        <div className="p-6">
+        <div className="p-2 sm:p-4 md:p-6 overflow-hidden">
           <Outlet />
         </div>
       </div>

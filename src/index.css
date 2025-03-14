@@ -8,12 +8,34 @@
   }
 }
 
-/* Sticky table headers */
+/* Responsive table containers */
 .overflow-x-auto {
   position: relative;
-  /* Apply these properties to all overflow-x-auto containers for better compatibility */
   max-height: calc(100vh - 200px); /* Adjust based on your layout */
   overflow-y: auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  border-radius: 0.375rem; /* rounded-md */
+}
+
+/* Ensure tables don't overflow their containers */
+.overflow-x-auto table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+/* For very small screens, allow horizontal scrolling but contain it properly */
+@media (max-width: 640px) {
+  .overflow-x-auto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .overflow-x-auto table {
+    min-width: 640px; /* Minimum width to ensure all columns are visible */
+  }
 }
 
 /* Make table headers sticky */
@@ -49,4 +71,65 @@ table thead::after {
   position: relative;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+/* Improve table cell padding for small screens */
+@media (max-width: 768px) {
+  table th, 
+  table td {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Custom scrollbar for better UX */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 5px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Scrollbar colors */
+.scrollbar-thumb-slate-700::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+.scrollbar-track-slate-800::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+/* Responsive container classes */
+.responsive-container {
+  width: 100%;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+  margin-right: auto;
+  margin-left: auto;
+  overflow-x: hidden;
+}
+
+@media (min-width: 640px) {
+  .responsive-container {
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .responsive-container {
+    padding-right: 1.5rem;
+    padding-left: 1.5rem;
+  }
 }

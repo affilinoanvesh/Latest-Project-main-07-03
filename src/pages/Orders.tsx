@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
-import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter, ChevronLeft, ChevronRight, BarChart2, CheckCircle, Eraser } from 'lucide-react';
+import { format, subDays } from 'date-fns';
+import { ChevronDown, ChevronUp, Search, Trash2, RefreshCw, AlertCircle, Filter, ChevronLeft, ChevronRight, BarChart2, CheckCircle, Eraser, Calendar } from 'lucide-react';
 import DateRangePicker from '../components/common/DateRangePicker';
 import { DateRange, Order } from '../types';
-import { fetchOrders, fetchInventory, fetchOverheadCosts, hasApiCredentials, deleteOrder, cleanupOldDraftOrders } from '../services/api';
+import { fetchOrders, fetchInventory, fetchOverheadCosts, hasApiCredentials, deleteOrder, cleanupOldDraftOrders, syncOrdersByDateRange } from '../services/api';
 import { calculateProfitAndLoss } from '../services/pnl';
 import { processOrderStockMovements } from '../db/operations/orders/processOrderStockMovements';
 
@@ -38,6 +38,13 @@ const Orders: React.FC = () => {
   // Add a new state for tracking cleanup progress
   const [cleaningUp, setCleaningUp] = useState(false);
   const [cleanupSuccess, setCleanupSuccess] = useState<string | null>(null);
+
+  // Add a new state for tracking sync progress
+  const [syncing, setSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+
+  // Add a new state for tracking sync progress percentage
+  const [syncProgress, setSyncProgress] = useState<number>(0);
 
   const loadData = useCallback(async () => {
     try {
@@ -275,6 +282,44 @@ const Orders: React.FC = () => {
     }
   };
 
+  // Add a function to handle syncing orders from the last 3 days
+  const handleSyncRecentOrders = async () => {
+    try {
+      setSyncing(true);
+      setError(null);
+      setSyncProgress(0);
+      
+      // Calculate date range for the last 3 days
+      const endDate = new Date();
+      const startDate = subDays(endDate, 3);
+      
+      // Format dates for API
+      const startDateStr = startDate.toISOString();
+      const endDateStr = endDate.toISOString();
+      
+      // Sync orders for the last 3 days
+      const syncedOrders = await syncOrdersByDateRange(startDateStr, endDateStr, (progress) => {
+        // Update progress state
+        setSyncProgress(Math.round(progress));
+      });
+      
+      setSyncSuccess(`Successfully synced ${syncedOrders.length} orders from the last 3 days`);
+      
+      // Refresh the orders list
+      await loadData();
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSyncSuccess(null);
+      }, 3000);
+    } catch (error: any) {
+      setError(`Failed to sync recent orders: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setSyncProgress(0);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -313,6 +358,25 @@ const Orders: React.FC = () => {
           </button>
           
           <button
+            onClick={handleSyncRecentOrders}
+            disabled={syncing || loading}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center disabled:opacity-50"
+            title="Sync orders from the last 3 days"
+          >
+            {syncing ? (
+              <>
+                <div className="mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Syncing {syncProgress}%
+              </>
+            ) : (
+              <>
+                <Calendar className="h-4 w-4 mr-2" />
+                Sync Last 3 Days
+              </>
+            )}
+          </button>
+          
+          <button
             onClick={handleCleanupDraftOrders}
             disabled={cleaningUp || loading}
             className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded flex items-center disabled:opacity-50"
@@ -328,6 +392,27 @@ const Orders: React.FC = () => {
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6 flex items-center">
           <AlertCircle className="h-5 w-5 mr-2" />
           <span>{error}</span>
+        </div>
+      )}
+      
+      {syncSuccess && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-6 flex items-center">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          <span>{syncSuccess}</span>
+        </div>
+      )}
+      
+      {cleanupSuccess && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-6 flex items-center">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          <span>{cleanupSuccess}</span>
+        </div>
+      )}
+      
+      {stockMovementSuccess && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-6 flex items-center">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          <span>{stockMovementSuccess}</span>
         </div>
       )}
       
@@ -781,20 +866,6 @@ const Orders: React.FC = () => {
           </div>
         </div>
       </div>
-      
-      {stockMovementSuccess && (
-        <div className="mb-4 p-2 bg-green-100 text-green-700 rounded flex items-center">
-          <CheckCircle className="h-5 w-5 mr-2" />
-          {stockMovementSuccess}
-        </div>
-      )}
-      
-      {cleanupSuccess && (
-        <div className="mb-4 p-3 bg-green-100 text-green-800 rounded flex items-center">
-          <CheckCircle className="h-5 w-5 mr-2" />
-          {cleanupSuccess}
-        </div>
-      )}
     </div>
   );
 };

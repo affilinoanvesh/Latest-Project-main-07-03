@@ -95,6 +95,26 @@ const Navbar: React.FC = () => {
     setExpandedSections(newExpandedSections);
   }, [location.pathname]);
 
+  // Auto-collapse navbar on small screens
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768 && !isCollapsed) {
+        setIsCollapsed(true);
+      }
+    };
+
+    // Initial check
+    handleResize();
+
+    // Add event listener
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isCollapsed, setIsCollapsed]);
+
   // Toggle a section's expanded state
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => ({
@@ -114,7 +134,7 @@ const Navbar: React.FC = () => {
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" />
       
       <nav 
-        className={`bg-slate-900 text-white h-screen fixed left-0 top-0 flex flex-col overflow-hidden transition-all duration-300 font-['Poppins'] ${
+        className={`bg-slate-900 text-white h-screen fixed left-0 top-0 flex flex-col overflow-hidden transition-all duration-300 font-['Poppins'] z-50 ${
           isCollapsed ? 'w-16' : 'w-56'
         }`}
         style={{ fontFamily: "'Poppins', sans-serif" }}
@@ -143,7 +163,7 @@ const Navbar: React.FC = () => {
           </div>
         )}
         
-        <div className="flex-1 overflow-y-auto px-2 pb-20">
+        <div className="flex-1 overflow-y-auto px-2 pb-20 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
           <ul className="space-y-1 mt-2">
             {navigationItems.map(item => (
               <li key={item.id} className="mb-1">

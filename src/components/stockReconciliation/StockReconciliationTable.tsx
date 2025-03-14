@@ -119,7 +119,7 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto max-w-full">
+        <div className="overflow-x-auto max-w-full scrollbar-thin">
           <table className="w-full divide-y divide-gray-200 border-collapse">
             <thead className="bg-gray-50">
               <tr>
@@ -128,7 +128,8 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
                     className="flex items-center focus:outline-none"
                     onClick={() => handleSort('sku')}
                   >
-                    SKU {renderSortIndicator('sku')}
+                    <span className="hidden sm:inline">SKU</span>
+                    <span className="sm:hidden">ID</span> {renderSortIndicator('sku')}
                   </button>
                 </th>
                 <th className="w-32 px-1 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -136,7 +137,8 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
                     className="flex items-center focus:outline-none"
                     onClick={() => handleSort('product_name')}
                   >
-                    Product {renderSortIndicator('product_name')}
+                    <span className="hidden sm:inline">Product</span>
+                    <span className="sm:hidden">Prod</span> {renderSortIndicator('product_name')}
                   </button>
                 </th>
                 <th className="w-16 px-1 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -144,7 +146,8 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
                     className="flex items-center focus:outline-none"
                     onClick={() => handleSort('initial_stock')}
                   >
-                    Init {renderSortIndicator('initial_stock')}
+                    <span className="hidden sm:inline">Init</span>
+                    <span className="sm:hidden">In</span> {renderSortIndicator('initial_stock')}
                   </button>
                 </th>
                 <th className="w-16 px-1 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -152,7 +155,8 @@ const StockReconciliationTable: React.FC<StockReconciliationTableProps> = ({
                     className="flex items-center focus:outline-none"
                     onClick={() => handleSort('total_sales')}
                   >
-                    Sales {renderSortIndicator('total_sales')}
+                    <span className="hidden sm:inline">Sales</span>
+                    <span className="sm:hidden">Sl</span> {renderSortIndicator('total_sales')}
                   </button>
                 </th>
                 <th className="w-16 px-1 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
