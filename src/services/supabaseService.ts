@@ -118,9 +118,13 @@ export class SupabaseService<T extends { id?: number }> {
         }
       }
       
+      // Use upsert operation instead of insert to handle duplicate keys
       const { data, error } = await supabase
         .from(this.tableName)
-        .insert(items)
+        .upsert(items, { 
+          onConflict: 'id',
+          ignoreDuplicates: false // Update the record if it already exists
+        })
         .select();
 
       if (error) {
@@ -143,7 +147,7 @@ export class SupabaseService<T extends { id?: number }> {
         throw error;
       }
 
-      console.log(`[${this.tableName}] Successfully added ${data?.length || 0} items`);
+      console.log(`[${this.tableName}] Successfully upserted ${data?.length || 0} items`);
       return data as T[];
     } catch (err) {
       console.error(`Unexpected error in bulkAdd for ${this.tableName}:`, err);
