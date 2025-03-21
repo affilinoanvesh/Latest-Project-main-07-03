@@ -295,3 +295,6 @@ export interface PurchaseOrderItem {
 
 // Stock Reconciliation Types
 export * from './stockReconciliation';
+
+// Export customer-related types
+export * from './customer';

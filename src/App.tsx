@@ -15,6 +15,7 @@ import PurchaseOrders from './pages/PurchaseOrders';
 import SuppliersPage from './components/suppliers/SuppliersPage';
 import AdditionalRevenuePage from './pages/AdditionalRevenue';
 import StockReconciliation from './pages/StockReconciliation';
+import CustomerAnalytics from './pages/CustomerAnalytics';
 import Login from './pages/Login';
 import InitialSetup from './pages/InitialSetup';
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -96,6 +97,7 @@ function App() {
                 <Route path="/purchase-orders" element={<PurchaseOrders />} />
                 <Route path="/suppliers" element={<SuppliersPage />} />
                 <Route path="/stock-reconciliation" element={<StockReconciliation />} />
+                <Route path="/customer-analytics" element={<CustomerAnalytics />} />
               </Route>
             </Route>
           </Routes>

@@ -14,6 +14,7 @@ export { purchaseOrdersService, purchaseOrderItemsService } from './purchaseOrde
 export { additionalRevenueService, additionalRevenueCategoriesService } from './additionalRevenueService';
 export { overheadCostsService } from './overheadService';
 export { settingsService } from './settingsService';
+export { customersService } from './customerService';
 
 // Export the base service class
 export { SupabaseService } from './supabaseService'; 
