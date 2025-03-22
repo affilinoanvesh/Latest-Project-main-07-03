@@ -6,7 +6,14 @@ import {
   BarChart2, Layers, ShoppingBag, Clock
 } from 'lucide-react';
 import DateRangePicker from '../components/common/DateRangePicker';
-import { customersService } from '../services';
+import { 
+  customerBasicService, 
+  customerRFMService, 
+  customerCohortService, 
+  customerPurchaseFrequencyService,
+  customerProductAffinityService,
+  customerOrderTimingService
+} from '../services/customer';
 import { syncCustomers } from '../services/api/customers';
 import { DateRange, CustomerAnalyticsData, Customer } from '../types';
 import CustomerOverview from '../components/customerAnalytics/CustomerOverview';
@@ -32,27 +39,13 @@ const CustomerAnalytics: React.FC = () => {
     startDate: startOfMonth(subMonths(new Date(), 3)),
     endDate: endOfMonth(new Date())
   });
-  const [activeTab, setActiveTab] = useState<'overview' | 'segments' | 'rfm' | 'advanced' | 'order-timing'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'segments' | 'rfm' | 'advanced'>('overview');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  // Load customer analytics data
+  // Load customer analytics data - use state date range
   const loadData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const data = await customersService.getCustomerAnalytics(
-        dateRange.startDate,
-        dateRange.endDate
-      );
-      
-      setAnalyticsData(data);
-    } catch (err) {
-      console.error('Error loading customer analytics data:', err);
-      setError('Failed to load customer analytics data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    // Just call loadDataWithRange with the current state
+    await loadDataWithRange(dateRange);
   };
 
   // Sync customer data from WooCommerce
@@ -65,8 +58,8 @@ const CustomerAnalytics: React.FC = () => {
         console.log(`Sync progress: ${progress}%`);
       });
       
-      // Reload data after sync
-      await loadData();
+      // Reload data after sync using current date range
+      await loadDataWithRange(dateRange);
     } catch (err) {
       console.error('Error syncing customer data:', err);
       setError('Failed to sync customer data. Please try again.');
@@ -77,7 +70,73 @@ const CustomerAnalytics: React.FC = () => {
 
   // Handle date range change
   const handleDateRangeChange = (newRange: DateRange) => {
+    console.log('Date range changed:', newRange);
+    // Set the date range and load data directly with the new range
+    // rather than waiting for state update
     setDateRange(newRange);
+    
+    // Instead of using setTimeout, we'll call loadData with the new range directly
+    loadDataWithRange(newRange);
+  };
+
+  // New function to load data with explicit date range
+  const loadDataWithRange = async (range: DateRange) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Loading data with explicit date range:', range);
+      
+      // Get basic customer data - pass date range
+      const basicData = await customerBasicService.getBasicAnalytics(
+        range.startDate,
+        range.endDate
+      );
+      
+      // Get orders filtered by date range - using the provided range, not state
+      const orders = await customerBasicService.getFilteredOrders(
+        range.startDate,
+        range.endDate
+      );
+      
+      console.log('Filtered orders:', orders.length);
+      
+      // Get products for product-related analysis
+      const products = await customerBasicService.getProducts();
+      
+      // Get RFM data
+      const rfmData = await customerRFMService.getRFMData();
+      
+      // Get cohort analysis data
+      const cohortData = await customerCohortService.getCohortData();
+      
+      // Analyze purchase frequency patterns
+      const purchaseFrequency = customerPurchaseFrequencyService.analyzePurchaseFrequency(orders);
+      
+      // Analyze product affinity patterns
+      const productAffinity = customerProductAffinityService.analyzeProductAffinity(orders, products);
+      
+      // Analyze order timing patterns
+      const orderTiming = customerOrderTimingService.analyzeOrderTiming(orders);
+      
+      // Combine all data
+      const data: CustomerAnalyticsData = {
+        ...basicData,
+        rfmData,
+        cohortAnalysis: cohortData,
+        purchaseFrequency,
+        productAffinity,
+        orderTiming
+      };
+      
+      console.log('Analytics data loaded successfully');
+      setAnalyticsData(data);
+    } catch (err) {
+      console.error('Error loading customer analytics data:', err);
+      setError('Failed to load customer analytics data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Export data as CSV
@@ -116,10 +175,10 @@ const CustomerAnalytics: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Load data on initial render and when date range changes
+  // Load data on initial render only, the date range change will trigger loadData explicitly
   useEffect(() => {
     loadData();
-  }, [dateRange]);
+  }, []); // Remove dateRange dependency since we're handling it explicitly
 
   // Define segment labels and colors
   const segmentLabels: Record<string, string> = {
@@ -232,17 +291,6 @@ const CustomerAnalytics: React.FC = () => {
             }`}
           >
             Advanced Analytics
-          </button>
-          <button
-            onClick={() => setActiveTab('order-timing')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center ${
-              activeTab === 'order-timing' 
-                ? 'border-indigo-500 text-indigo-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Clock className="h-4 w-4 mr-1" />
-            Order Timing
           </button>
         </nav>
       </div>
@@ -456,234 +504,6 @@ const CustomerAnalytics: React.FC = () => {
                   </div>
                 </div>
               )}
-            </>
-          )}
-          
-          {/* Order Timing Analysis Tab */}
-          {activeTab === 'order-timing' && (
-            <>
-              <div className="mb-6">
-                {/* Enhanced Header with Key Metrics */}
-                <div className="bg-white p-5 rounded-lg border shadow-sm mb-6">
-                  <div className="flex flex-col md:flex-row md:items-center gap-6">
-                    <div className="flex items-center">
-                      <div className="bg-rose-100 p-3 rounded-lg mr-4">
-                        <Clock className="h-7 w-7 text-rose-600" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-medium">Order Timing Analysis</h2>
-                        <p className="text-gray-500 mt-1">
-                          Optimize your ad schedules and staffing based on customer ordering patterns
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-3 ml-auto">
-                      <button
-                        onClick={loadData}
-                        className="flex items-center gap-2 px-3 py-2 bg-white border rounded-md shadow-sm hover:bg-gray-50"
-                        title="Refresh Data"
-                      >
-                        <RefreshCw className="h-4 w-4 text-gray-500" />
-                        <span className="text-sm">Refresh</span>
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {analyticsData.orderTiming && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
-                      <div className="bg-indigo-50 p-3 rounded-lg">
-                        <p className="text-xs text-indigo-600 font-medium">Best Day</p>
-                        <p className="text-lg font-semibold">
-                          {analyticsData.orderTiming.bestPerformingDays[0]?.day || 'N/A'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {analyticsData.orderTiming.bestPerformingDays[0]?.count || 0} orders
-                        </p>
-                      </div>
-                      <div className="bg-green-50 p-3 rounded-lg">
-                        <p className="text-xs text-green-600 font-medium">Best Time</p>
-                        <p className="text-lg font-semibold">
-                          {analyticsData.orderTiming.bestPerformingHours[0]?.hour || 'N/A'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {analyticsData.orderTiming.bestPerformingHours[0]?.count || 0} orders
-                        </p>
-                      </div>
-                      <div className="bg-amber-50 p-3 rounded-lg">
-                        <p className="text-xs text-amber-600 font-medium">Highest Revenue</p>
-                        <p className="text-lg font-semibold">
-                          {analyticsData.orderTiming.weekdayDistribution.sort((a, b) => b.revenue - a.revenue)[0]?.day || 'N/A'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          ${analyticsData.orderTiming.weekdayDistribution.sort((a, b) => b.revenue - a.revenue)[0]?.revenue.toLocaleString() || 0}
-                        </p>
-                      </div>
-                      <div className="bg-purple-50 p-3 rounded-lg">
-                        <p className="text-xs text-purple-600 font-medium">Highest AOV</p>
-                        <p className="text-lg font-semibold">
-                          {analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => b.averageOrderValue - a.averageOrderValue)[0]?.timeRange || 'N/A'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          ${analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => b.averageOrderValue - a.averageOrderValue)[0]?.averageOrderValue.toLocaleString() || 0}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {analyticsData.orderTiming ? (
-                  <>
-                    {/* Main Analysis Component */}
-                    <OrderTimingAnalysis 
-                      timingData={analyticsData.orderTiming} 
-                      onRefresh={loadData}
-                    />
-                    
-                    {/* Recommendations Section */}
-                    <div className="mt-6">
-                      <h3 className="text-lg font-medium mb-3">Action Plan</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white p-5 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="p-2 rounded-full bg-emerald-100">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M8 12h8"></path>
-                                <path d="M12 8v8"></path>
-                              </svg>
-                            </div>
-                            <h4 className="font-medium">Advertising Strategy</h4>
-                          </div>
-                          <ul className="space-y-3 text-sm">
-                            <li className="flex items-start">
-                              <span className="text-emerald-500 font-bold mr-2 mt-1">•</span>
-                              <span>Increase ad budget by 30% on {analyticsData.orderTiming.bestPerformingDays[0]?.day || 'weekends'} during {analyticsData.orderTiming.bestPerformingHours[0]?.hour || 'peak hours'}</span>
-                            </li>
-                            <li className="flex items-start">
-                              <span className="text-emerald-500 font-bold mr-2 mt-1">•</span>
-                              <span>Run flash promotions between {analyticsData.orderTiming.bestPerformingHours[0]?.hour || 'peak hours'} to maximize conversion rates</span>
-                            </li>
-                            <li className="flex items-start">
-                              <span className="text-emerald-500 font-bold mr-2 mt-1">•</span>
-                              <span>Reduce ad spend during {analyticsData.orderTiming.worstPerformingHours.filter(h => h.count > 0)[0]?.hour || 'off-hours'} when conversion rates are lowest</span>
-                            </li>
-                          </ul>
-                        </div>
-                        
-                        <div className="bg-white p-5 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="p-2 rounded-full bg-blue-100">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600">
-                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                              </svg>
-                            </div>
-                            <h4 className="font-medium">Operational Improvements</h4>
-                          </div>
-                          <ul className="space-y-3 text-sm">
-                            <li className="flex items-start">
-                              <span className="text-blue-500 font-bold mr-2 mt-1">•</span>
-                              <span>Schedule additional staff during {analyticsData.orderTiming.bestPerformingHours[0]?.hour || 'peak hours'} to handle increased order volume</span>
-                            </li>
-                            <li className="flex items-start">
-                              <span className="text-blue-500 font-bold mr-2 mt-1">•</span>
-                              <span>Ensure inventory levels are well-stocked before {analyticsData.orderTiming.bestPerformingDays[0]?.day || 'busy days'}</span>
-                            </li>
-                            <li className="flex items-start">
-                              <span className="text-blue-500 font-bold mr-2 mt-1">•</span>
-                              <span>Plan fulfillment process improvements for high-volume periods</span>
-                            </li>
-                          </ul>
-                        </div>
-                        
-                        <div className="bg-white p-5 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="p-2 rounded-full bg-purple-100">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-600">
-                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                              </svg>
-                            </div>
-                            <h4 className="font-medium">Customer Engagement</h4>
-                          </div>
-                          <ul className="space-y-3 text-sm">
-                            <li className="flex items-start">
-                              <span className="text-purple-500 font-bold mr-2 mt-1">•</span>
-                              <span>Send personalized offers during {analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => b.averageOrderValue - a.averageOrderValue)[0]?.timeRange || 'high-value periods'} when AOV is highest</span>
-                            </li>
-                            <li className="flex items-start">
-                              <span className="text-purple-500 font-bold mr-2 mt-1">•</span>
-                              <span>Schedule email campaigns to arrive just before peak ordering hours</span>
-                            </li>
-                            <li className="flex items-start">
-                              <span className="text-purple-500 font-bold mr-2 mt-1">•</span>
-                              <span>Use SMS reminders for limited-time offers during known high-purchase periods</span>
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* ROI Impact Analysis */}
-                    <div className="mt-6 bg-gradient-to-r from-indigo-50 to-blue-50 p-5 rounded-lg border shadow-sm">
-                      <h3 className="text-lg font-medium mb-2">Expected ROI Impact</h3>
-                      <p className="text-sm text-gray-600 mb-4">
-                        Implementing these timing-based optimizations could result in:
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-600">Ad Spend Efficiency</span>
-                            <span className="text-emerald-500 font-bold">+15-20%</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            By targeting high-converting time slots
-                          </p>
-                        </div>
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-600">Conversion Rate</span>
-                            <span className="text-emerald-500 font-bold">+10-15%</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Through perfectly timed promotions
-                          </p>
-                        </div>
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-600">Average Order Value</span>
-                            <span className="text-emerald-500 font-bold">+5-8%</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            By targeting high-AOV time periods
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="bg-white p-6 rounded-lg border shadow-sm">
-                    <div className="text-center py-8 flex flex-col items-center">
-                      <div className="bg-rose-100 p-4 rounded-full mb-4">
-                        <Clock className="h-12 w-12 text-rose-600" />
-                      </div>
-                      <h3 className="text-xl font-medium mb-2">No Order Timing Data Available</h3>
-                      <p className="text-gray-500 mb-6 max-w-lg mx-auto">
-                        Order timing analysis reveals when your customers are most likely to place orders,
-                        helping you optimize advertising schedules and staffing for peak order times.
-                      </p>
-                      <button
-                        onClick={loadData}
-                        className="px-4 py-2.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2"
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                        <span>Generate Analysis</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </>
           )}
         </div>

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { customersService } from '../../services/customerService';
+import { customerBasicService, customerRFMService } from '../../services/customer';
 import { Customer } from '../../types';
 import CustomerSegmentList from './CustomerSegmentList';
 import RFMSegmentList from './RFMSegmentList';
 import { supabase } from '../../services/supabase';
+import { Loader2, RefreshCw, TrendingUp, Users } from 'lucide-react';
 
 // The UI component for displaying customer analytics data
 const CustomerAnalyticsData: React.FC = () => {
@@ -21,7 +22,7 @@ const CustomerAnalyticsData: React.FC = () => {
         setLoading(true);
         setError(null);
         
-        const analyticsData = await customersService.getCustomerAnalytics();
+        const analyticsData = await customerBasicService.getBasicAnalytics();
         setCustomersBySegment(analyticsData.customersBySegment || {});
       } catch (err) {
         console.error('Error loading customer analytics data:', err);
@@ -41,13 +42,13 @@ const CustomerAnalyticsData: React.FC = () => {
       setRfmSuccess(null);
       
       // First calculate RFM scores
-      await customersService.calculateRFMScores();
+      await customerRFMService.calculateRFMScores();
       
-      // Then update customer segments
-      await customersService.updateCustomerSegments();
+      // Then update customer segments based on RFM scores
+      await customerRFMService.updateCustomerSegments();
       
       // Reload data
-      const analyticsData = await customersService.getCustomerAnalytics();
+      const analyticsData = await customerBasicService.getBasicAnalytics();
       setCustomersBySegment(analyticsData.customersBySegment || {});
       
       setRfmSuccess(true);
@@ -70,10 +71,10 @@ const CustomerAnalyticsData: React.FC = () => {
       setFixingZeroOrderCustomers(true);
       
       // Use the service method to update all zero-order customers
-      await customersService.forceUpdateZeroOrderCustomers();
+      await customerRFMService.updateZeroOrderCustomers();
       
       // Reload data to see changes
-      const analyticsData = await customersService.getCustomerAnalytics();
+      const analyticsData = await customerBasicService.getBasicAnalytics();
       setCustomersBySegment(analyticsData.customersBySegment || {});
       
       // Show success alert

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { customerBasicService } from '../../services/customer';
 import { Customer, Order } from '../../types';
-import { customersService } from '../../services';
+import { ShoppingBag, Plus, ChevronDown, ChevronUp, Package, Tag, Calendar, Clock, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface CustomerOrderProductsProps {
@@ -26,7 +27,25 @@ const CustomerOrderProducts: React.FC<CustomerOrderProductsProps> = ({ customer 
         setLoading(true);
         setError(null);
         
-        const customerOrders = await customersService.getCustomerOrders(customer.id);
+        // Get the customer's orders directly from Supabase
+        const { data: orderData, error } = await customerBasicService.supabase
+          .from('orders')
+          .select('*')
+          .eq('customer_id', customer.id)
+          .order('date_created', { ascending: false });
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Parse orders and properly handle JSON fields
+        const customerOrders = orderData.map((order: any) => ({
+          ...order,
+          date_created: order.date_created ? new Date(order.date_created) : undefined,
+          line_items: typeof order.line_items === 'string' 
+            ? JSON.parse(order.line_items) 
+            : order.line_items,
+        }));
         
         // Sort orders by date (newest first)
         const sortedOrders = [...customerOrders].sort((a, b) => {

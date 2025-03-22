@@ -81,7 +81,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ dateRange, onChange }
 
   const handleQuickSelect = (days: number) => {
     const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    
     const startDate = subDays(endDate, days);
+    startDate.setHours(0, 0, 0, 0);
+    
+    console.log('DateRangePicker quick select:', { days, startDate, endDate });
     
     setLocalStartDate(format(startDate, 'yyyy-MM-dd'));
     setLocalEndDate(format(endDate, 'yyyy-MM-dd'));
@@ -96,7 +101,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ dateRange, onChange }
 
   const handleMonthSelect = (months: number) => {
     const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    
     const startDate = subMonths(endDate, months);
+    startDate.setHours(0, 0, 0, 0);
+    
+    console.log('DateRangePicker month select:', { months, startDate, endDate });
     
     setLocalStartDate(format(startDate, 'yyyy-MM-dd'));
     setLocalEndDate(format(endDate, 'yyyy-MM-dd'));
@@ -112,7 +122,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ dateRange, onChange }
   const handleThisMonth = () => {
     const now = new Date();
     const startDate = startOfMonth(now);
+    startDate.setHours(0, 0, 0, 0);
+    
     const endDate = endOfMonth(now);
+    endDate.setHours(23, 59, 59, 999);
+    
+    console.log('DateRangePicker this month:', { startDate, endDate });
     
     setLocalStartDate(format(startDate, 'yyyy-MM-dd'));
     setLocalEndDate(format(endDate, 'yyyy-MM-dd'));
@@ -128,8 +143,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ dateRange, onChange }
   const handleLastMonth = () => {
     const now = new Date();
     const lastMonth = subMonths(now, 1);
+    
     const startDate = startOfMonth(lastMonth);
+    startDate.setHours(0, 0, 0, 0);
+    
     const endDate = endOfMonth(lastMonth);
+    endDate.setHours(23, 59, 59, 999);
+    
+    console.log('DateRangePicker last month:', { startDate, endDate });
     
     setLocalStartDate(format(startDate, 'yyyy-MM-dd'));
     setLocalEndDate(format(endDate, 'yyyy-MM-dd'));
@@ -151,6 +172,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ dateRange, onChange }
       // Validate dates before applying
       const startDate = new Date(localStartDate);
       const endDate = new Date(localEndDate);
+      
+      // Set the time to the start and end of day
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      console.log('DateRangePicker applying date range:', { startDate, endDate });
       
       if (isValid(startDate) && isValid(endDate)) {
         // Ensure end date is not before start date

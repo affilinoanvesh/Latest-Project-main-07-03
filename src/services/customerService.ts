@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { SupabaseService } from './supabaseService';
 import { Customer, CustomerRFM, CustomerAcquisition, CustomerAnalyticsData, Order, CohortData, PurchaseFrequencyData, ProductAffinityData, ProductPair, OrderTimingData } from '../types';
 import { format, differenceInDays, parse, parseISO, startOfMonth, endOfMonth, addMonths, differenceInMonths, getDay, getHours } from 'date-fns';
+import { customersService as modularCustomerService } from './customer';
 
 export class CustomersService extends SupabaseService<Customer> {
   constructor() {
@@ -274,10 +275,21 @@ export class CustomersService extends SupabaseService<Customer> {
       }
       
       // Get all orders for advanced analytics
-      const { data: allOrders, error: ordersError } = await supabase
+      let ordersQuery = supabase
         .from('orders')
         .select('*')  // Just select all fields, line_items is included as JSONB
         .order('date_created', { ascending: true });
+        
+      // Apply date filters if provided
+      if (startDate) {
+        ordersQuery = ordersQuery.gte('date_created', startDate.toISOString());
+      }
+      
+      if (endDate) {
+        ordersQuery = ordersQuery.lte('date_created', endDate.toISOString());
+      }
+      
+      const { data: allOrders, error: ordersError } = await ordersQuery;
         
       if (ordersError) {
         console.error('Error fetching orders:', ordersError);
@@ -1507,4 +1519,7 @@ export class CustomersService extends SupabaseService<Customer> {
   }
 }
 
-export const customersService = new CustomersService(); 
+// Export the customerService instance with the same interface
+// This ensures backward compatibility while we transition
+// to the new modular structure
+export const customersService = modularCustomerService; 

@@ -17,4 +17,7 @@ export { settingsService } from './settingsService';
 export { customersService } from './customerService';
 
 // Export the base service class
-export { SupabaseService } from './supabaseService'; 
+export { SupabaseService } from './supabaseService';
+
+// Export the new modular customer services
+export * from './customer';

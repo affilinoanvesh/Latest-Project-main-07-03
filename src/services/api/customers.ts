@@ -1,6 +1,6 @@
 import { Customer } from '../../types';
 import { createWooCommerceClient } from './credentials';
-import { customersService } from '../../services/customerService';
+import { customerBasicService, customerRFMService } from '../../services/customer';
 import { supabase } from '../../services/supabase';
 import { updateLastSync } from './sync';
 import { 
@@ -251,10 +251,15 @@ export const syncCustomers = async (progressCallback?: (progress: number) => voi
     const rawCustomers = await fetchAllCustomers(progressCallback);
     
     // Get existing customers from database
-    const existingCustomers = await customersService.getAll();
+    const { data: existingCustomers = [] } = await customerBasicService.supabase
+      .from('customers')
+      .select('*');
     
     // Create map of existing customers by ID for quick lookup
-    const existingCustomerMap = new Map(existingCustomers.map(c => [c.id, c]));
+    const existingCustomersMap = new Map();
+    existingCustomers.forEach((c: Customer) => {
+      existingCustomersMap.set(c.id, c);
+    });
     
     // Process customers in batches
     const processedCustomers = await processBatches<any, Customer>(
@@ -340,10 +345,10 @@ export const syncCustomers = async (progressCallback?: (progress: number) => voi
     safeUpdateProgress(progressCallback, 100);
     
     // Calculate RFM scores
-    await customersService.calculateRFMScores();
+    await customerRFMService.calculateRFMScores();
     
     // Update customer segments based on RFM
-    await customersService.updateCustomerSegments();
+    await customerRFMService.updateCustomerSegments();
     
     return processedCustomers;
   } catch (error) {
