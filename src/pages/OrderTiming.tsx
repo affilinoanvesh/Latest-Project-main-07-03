@@ -78,6 +78,14 @@ const OrderTiming: React.FC = () => {
     loadData();
   }, [dateRange, isAllTime]);
 
+  // Add utility functions for safe number formatting
+  const formatCurrency = (value: number | undefined): string => {
+    if (value === undefined || isNaN(value) || value === 0) {
+      return "$0";
+    }
+    return `$${value.toLocaleString()}`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -178,6 +186,9 @@ const OrderTiming: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-1">
                     {analyticsData.orderTiming.bestPerformingDays[0]?.count || 0} orders
                   </p>
+                  <p className="text-xs text-gray-500">
+                    {formatCurrency(analyticsData.orderTiming.bestPerformingDays[0]?.revenue)} revenue
+                  </p>
                 </div>
                 <div className="bg-green-50 p-3 rounded-lg">
                   <p className="text-xs text-green-600 font-medium">Best Time</p>
@@ -187,23 +198,32 @@ const OrderTiming: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-1">
                     {analyticsData.orderTiming.bestPerformingHours[0]?.count || 0} orders
                   </p>
+                  <p className="text-xs text-gray-500">
+                    {formatCurrency(analyticsData.orderTiming.bestPerformingHours[0]?.revenue)} revenue
+                  </p>
                 </div>
                 <div className="bg-amber-50 p-3 rounded-lg">
                   <p className="text-xs text-amber-600 font-medium">Highest Revenue</p>
                   <p className="text-lg font-semibold">
-                    {analyticsData.orderTiming.weekdayDistribution.sort((a, b) => b.revenue - a.revenue)[0]?.day || 'N/A'}
+                    {analyticsData.orderTiming.weekdayDistribution.sort((a, b) => (b.revenue || 0) - (a.revenue || 0))[0]?.day || 'N/A'}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    ${analyticsData.orderTiming.weekdayDistribution.sort((a, b) => b.revenue - a.revenue)[0]?.revenue.toLocaleString() || 0}
+                    {formatCurrency(analyticsData.orderTiming.weekdayDistribution.sort((a, b) => (b.revenue || 0) - (a.revenue || 0))[0]?.revenue)}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {analyticsData.orderTiming.weekdayDistribution.sort((a, b) => (b.revenue || 0) - (a.revenue || 0))[0]?.count || 0} orders
                   </p>
                 </div>
                 <div className="bg-purple-50 p-3 rounded-lg">
                   <p className="text-xs text-purple-600 font-medium">Highest AOV</p>
                   <p className="text-lg font-semibold">
-                    {analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => b.averageOrderValue - a.averageOrderValue)[0]?.timeRange || 'N/A'}
+                    {analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => (b.averageOrderValue || 0) - (a.averageOrderValue || 0))[0]?.timeRange || 'N/A'}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    ${analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => b.averageOrderValue - a.averageOrderValue)[0]?.averageOrderValue.toLocaleString() || 0}
+                    {formatCurrency(analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => (b.averageOrderValue || 0) - (a.averageOrderValue || 0))[0]?.averageOrderValue)}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {analyticsData.orderTiming.timeOfDayDistribution.sort((a, b) => (b.averageOrderValue || 0) - (a.averageOrderValue || 0))[0]?.count || 0} orders
                   </p>
                 </div>
               </div>

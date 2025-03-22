@@ -30,24 +30,57 @@ export class CustomerOrderTimingService extends CustomerBaseService {
       });
 
       const totalOrders = sortedOrders.length;
-      const totalRevenue = sortedOrders.reduce((sum, order) => 
-        sum + (typeof order.total === 'string' ? parseFloat(order.total) : 0), 0);
+      
+      // Fix revenue calculation to handle string parsing properly
+      const totalRevenue = sortedOrders.reduce((sum, order) => {
+        let orderTotal = 0;
+        if (order.total) {
+          if (typeof order.total === 'string') {
+            orderTotal = parseFloat(order.total);
+          } else if (typeof order.total === 'number') {
+            orderTotal = order.total;
+          }
+        }
+        return sum + (isNaN(orderTotal) ? 0 : orderTotal);
+      }, 0);
+      
+      console.log('Total revenue calculated:', totalRevenue);
 
       // Calculate hourly distribution
       const hourCounts = Array(24).fill(0);
       const hourlyRevenue = Array(24).fill(0);
+      
+      // Debug the first few orders to see the total values
+      console.log('Sample of first 3 orders total values:', sortedOrders.slice(0, 3).map(o => ({
+        total: o.total,
+        type: typeof o.total,
+        parsedValue: parseFloat(o.total as string)
+      })));
+      
       sortedOrders.forEach(order => {
         if (!order.date_created) return;
         const orderDate = new Date(order.date_created);
         const hour = orderDate.getHours();
         hourCounts[hour]++;
-        hourlyRevenue[hour] += (typeof order.total === 'string' ? parseFloat(order.total) : 0);
+        
+        // Ensure proper parsing of the total field
+        let orderTotal = 0;
+        if (order.total) {
+          if (typeof order.total === 'string') {
+            orderTotal = parseFloat(order.total);
+          } else if (typeof order.total === 'number') {
+            orderTotal = order.total;
+          }
+        }
+        
+        hourlyRevenue[hour] += isNaN(orderTotal) ? 0 : orderTotal;
       });
 
       const hourlyDistribution = hourCounts.map((count, hour) => {
-        const revenue = hourlyRevenue[hour];
-        const percentage = Math.round((count / totalOrders) * 100);
-        const averageOrderValue = count > 0 ? revenue / count : 0;
+        const revenue = hourlyRevenue[hour] || 0;
+        const percentage = count > 0 ? Math.round((count / totalOrders) * 100) : 0;
+        // Prevent division by zero
+        const averageOrderValue = count > 0 ? (revenue / count) : 0;
         return {
           hour: format(new Date().setHours(hour, 0, 0, 0), 'h a'),
           count,
@@ -66,13 +99,25 @@ export class CustomerOrderTimingService extends CustomerBaseService {
         const orderDate = new Date(order.date_created);
         const day = orderDate.getDay();
         dayCounts[day]++;
-        dayRevenue[day] += (typeof order.total === 'string' ? parseFloat(order.total) : 0);
+        
+        // Ensure proper parsing of the total field
+        let orderTotal = 0;
+        if (order.total) {
+          if (typeof order.total === 'string') {
+            orderTotal = parseFloat(order.total);
+          } else if (typeof order.total === 'number') {
+            orderTotal = order.total;
+          }
+        }
+        
+        dayRevenue[day] += isNaN(orderTotal) ? 0 : orderTotal;
       });
 
       const weekdayDistribution = dayCounts.map((count, day) => {
-        const revenue = dayRevenue[day];
-        const percentage = Math.round((count / totalOrders) * 100);
-        const averageOrderValue = count > 0 ? revenue / count : 0;
+        const revenue = dayRevenue[day] || 0;
+        const percentage = count > 0 ? Math.round((count / totalOrders) * 100) : 0;
+        // Prevent division by zero
+        const averageOrderValue = count > 0 ? (revenue / count) : 0;
         return {
           day: dayNames[day],
           count,
@@ -97,12 +142,21 @@ export class CustomerOrderTimingService extends CustomerBaseService {
         if (!order.date_created) return;
         const orderDate = new Date(order.date_created);
         const hour = orderDate.getHours();
-        const orderTotal = typeof order.total === 'string' ? parseFloat(order.total) : 0;
+        
+        // Ensure proper parsing of the total field
+        let orderTotal = 0;
+        if (order.total) {
+          if (typeof order.total === 'string') {
+            orderTotal = parseFloat(order.total);
+          } else if (typeof order.total === 'number') {
+            orderTotal = order.total;
+          }
+        }
         
         for (let i = 0; i < timeOfDayRanges.length; i++) {
           if (timeOfDayRanges[i].hours.includes(hour)) {
             timeOfDayCounts[i]++;
-            timeOfDayRevenue[i] += orderTotal;
+            timeOfDayRevenue[i] += isNaN(orderTotal) ? 0 : orderTotal;
             break;
           }
         }
@@ -110,9 +164,9 @@ export class CustomerOrderTimingService extends CustomerBaseService {
       
       const timeOfDayDistribution = timeOfDayRanges.map((range, index) => {
         const count = timeOfDayCounts[index];
-        const revenue = timeOfDayRevenue[index];
-        const percentage = Math.round((count / totalOrders) * 100);
-        const averageOrderValue = count > 0 ? revenue / count : 0;
+        const revenue = timeOfDayRevenue[index] || 0;
+        const percentage = Math.round((count / totalOrders) * 100) || 0;
+        const averageOrderValue = count > 0 ? (revenue / count) || 0 : 0;
         
         return {
           timeRange: range.name,

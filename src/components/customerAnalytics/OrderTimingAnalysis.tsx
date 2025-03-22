@@ -17,6 +17,21 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'weekday' | 'timeOfDay' | 'hourly'>('weekday');
 
+  // Utility functions for safe number formatting
+  const formatCurrency = (value: number): string => {
+    if (value === undefined || isNaN(value) || value === 0) {
+      return "$0";
+    }
+    return `$${value.toLocaleString()}`;
+  };
+
+  const formatPercentage = (value: number, total: number): string => {
+    if (value === undefined || isNaN(value) || total === 0) {
+      return "0%";
+    }
+    return `${((value / total) * 100).toFixed(1)}%`;
+  };
+
   // Display loading state
   if (loading) {
     return (
@@ -77,6 +92,7 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
   const weekdayMaxCount = Math.max(...timingData.weekdayDistribution.map(day => day.count));
   const weekdayMaxRevenue = Math.max(...timingData.weekdayDistribution.map(day => day.revenue));
   const timeOfDayMaxCount = Math.max(...timingData.timeOfDayDistribution.map(time => time.count));
+  const timeOfDayMaxRevenue = Math.max(...timingData.timeOfDayDistribution.map(time => time.revenue));
   
   // Filter out zero order days
   const filteredWorstDays = timingData.worstPerformingDays.filter(day => day.count > 0);
@@ -135,6 +151,7 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
     best: 'bg-emerald-500',
     worst: 'bg-amber-400',
     revenue: 'bg-purple-500',
+    aov: 'bg-violet-400',
     
     // Time categories
     morning: 'bg-blue-500',
@@ -149,6 +166,7 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
     // Card gradients
     bestGradient: 'from-emerald-50 to-teal-50 border-emerald-100',
     worstGradient: 'from-amber-50 to-orange-50 border-amber-100',
+    revenueGradient: 'from-purple-50 to-violet-50 border-purple-100',
     
     // Accent colors for recommendations
     adTip: 'bg-blue-50 text-blue-700',
@@ -318,8 +336,8 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                       ></div>
                     </div>
                     <div className="mt-1 flex justify-between text-xs text-gray-500">
-                      <span>${day.revenue.toLocaleString()} revenue</span>
-                      <span>AOV: ${day.averageOrderValue.toLocaleString()}</span>
+                      <span>{formatCurrency(day.revenue)} revenue</span>
+                      <span>AOV: {formatCurrency(day.averageOrderValue)}</span>
                     </div>
                   </div>
                 ))}
@@ -334,20 +352,56 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                   <div key={`revenue-${day.day}`} className="group">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium">{day.day}</span>
-                      <span className="text-sm font-medium">${day.revenue.toLocaleString()}</span>
+                      <span className="text-sm font-medium">${formatCurrency(day.revenue)}</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
                       <div 
-                        className="bg-emerald-500 h-full rounded-full transition-all group-hover:brightness-110"
+                        className="bg-purple-500 h-full rounded-full transition-all group-hover:brightness-110"
                         style={{ width: `${Math.max((day.revenue / weekdayMaxRevenue) * 100, 3)}%` }}
                       ></div>
                     </div>
                     <div className="mt-1 text-xs text-gray-500 text-right">
-                      <span>{(day.revenue / timingData.weekdayDistribution.reduce((sum, d) => sum + d.revenue, 0) * 100).toFixed(1)}% of total revenue</span>
+                      <span>
+                        {formatPercentage(
+                          day.revenue, 
+                          timingData.weekdayDistribution.reduce((sum, d) => sum + d.revenue, 0)
+                        )} of total revenue
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+          
+          {/* Average Order Value by Day */}
+          <div>
+            <h4 className="text-base font-medium text-gray-700 mb-4">Average Order Value by Day</h4>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-500">Day</span>
+                <span className="text-sm font-medium text-gray-500">AOV</span>
+              </div>
+              {sortedWeekdayDistribution.map((day) => {
+                const maxAOV = Math.max(...timingData.weekdayDistribution.map(d => d.averageOrderValue));
+                return (
+                  <div key={`aov-${day.day}`} className="group">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium">{day.day}</span>
+                      <span className="text-sm font-medium">${formatCurrency(day.averageOrderValue)}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+                      <div 
+                        className={`${colors.aov} h-full rounded-full transition-all group-hover:brightness-110`}
+                        style={{ width: `${Math.max((day.averageOrderValue / maxAOV) * 100, 3)}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 text-right">
+                      <span>{formatPercentage(day.averageOrderValue, maxAOV)}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
           
@@ -375,15 +429,15 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">Revenue</span>
-                          <span className="block text-sm font-semibold">${day.revenue.toLocaleString()}</span>
+                          <span className="block text-sm font-semibold">${formatCurrency(day.revenue)}</span>
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">AOV</span>
-                          <span className="block text-sm font-semibold">${day.averageOrderValue.toLocaleString()}</span>
+                          <span className="block text-sm font-semibold">${formatCurrency(day.averageOrderValue)}</span>
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">% of Total</span>
-                          <span className="block text-sm font-semibold">{day.percentage}%</span>
+                          <span className="block text-sm font-semibold">{formatPercentage(day.revenue, timingData.weekdayDistribution.reduce((sum, d) => sum + d.revenue, 0))}</span>
                         </div>
                       </div>
                     </div>
@@ -413,15 +467,15 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">Revenue</span>
-                          <span className="block text-sm font-semibold">${day.revenue.toLocaleString()}</span>
+                          <span className="block text-sm font-semibold">${formatCurrency(day.revenue)}</span>
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">AOV</span>
-                          <span className="block text-sm font-semibold">${day.averageOrderValue.toLocaleString()}</span>
+                          <span className="block text-sm font-semibold">${formatCurrency(day.averageOrderValue)}</span>
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">% of Top Day</span>
-                          <span className="block text-sm font-semibold">{Math.round((day.count / timingData.bestPerformingDays[0]?.count) * 100) || 0}%</span>
+                          <span className="block text-sm font-semibold">{formatPercentage(day.revenue, timingData.bestPerformingDays[0]?.revenue)}</span>
                         </div>
                       </div>
                     </div>
@@ -461,8 +515,8 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                         ></div>
                       </div>
                       <div className="mt-1 flex justify-between text-xs text-gray-500">
-                        <span>${time.revenue.toLocaleString()} revenue</span>
-                        <span>AOV: ${time.averageOrderValue.toLocaleString()}</span>
+                        <span>{formatCurrency(time.revenue)} revenue</span>
+                        <span>AOV: {formatCurrency(time.averageOrderValue)}</span>
                       </div>
                     </div>
                   );
@@ -480,21 +534,57 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                     <div key={`revenue-${time.timeRange}`} className="group">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium">{time.timeRange}</span>
-                        <span className="text-sm font-medium">${time.revenue.toLocaleString()}</span>
+                        <span className="text-sm font-medium">${formatCurrency(time.revenue)}</span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
                         <div 
                           className={`${colors.revenue} h-full rounded-full transition-all group-hover:brightness-110`}
-                          style={{ width: `${Math.max((time.revenue / maxRevenue) * 100, 3)}%` }}
+                          style={{ width: `${Math.max((time.revenue / timeOfDayMaxRevenue) * 100, 3)}%` }}
                         ></div>
                       </div>
                       <div className="mt-1 text-xs text-gray-500 text-right">
-                        <span>{(time.revenue / timingData.timeOfDayDistribution.reduce((sum, t) => sum + t.revenue, 0) * 100).toFixed(1)}% of total revenue</span>
+                        <span>
+                          {formatPercentage(
+                            time.revenue,
+                            timingData.timeOfDayDistribution.reduce((sum, t) => sum + t.revenue, 0)
+                          )} of total revenue
+                        </span>
                       </div>
                     </div>
                   );
                 })}
               </div>
+            </div>
+          </div>
+          
+          {/* Average Order Value by Time of Day */}
+          <div>
+            <h4 className="text-base font-medium text-gray-700 mb-4">Average Order Value by Time of Day</h4>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-500">Time Range</span>
+                <span className="text-sm font-medium text-gray-500">AOV</span>
+              </div>
+              {timingData.timeOfDayDistribution.map((time) => {
+                const maxAOV = Math.max(...timingData.timeOfDayDistribution.map(t => t.averageOrderValue));
+                return (
+                  <div key={`aov-${time.timeRange}`} className="group">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium">{time.timeRange}</span>
+                      <span className="text-sm font-medium">${formatCurrency(time.averageOrderValue)}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+                      <div 
+                        className={`${colors.aov} h-full rounded-full transition-all group-hover:brightness-110`}
+                        style={{ width: `${Math.max((time.averageOrderValue / maxAOV) * 100, 3)}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 text-right">
+                      <span>{formatPercentage(time.averageOrderValue, maxAOV)}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
           
@@ -522,7 +612,7 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                         </div>
                         <div className="bg-gray-50 p-2 rounded text-center">
                           <span className="block text-xs text-gray-500">Revenue</span>
-                          <span className="block text-sm font-semibold">${hour.revenue.toLocaleString()}</span>
+                          <span className="block text-sm font-semibold">${formatCurrency(hour.revenue)}</span>
                         </div>
                       </div>
                     </div>
@@ -563,8 +653,8 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                     <h5 className={`text-sm font-medium ${colors.analysisTip.split(' ')[1]} mb-1`}>Performance Gap Analysis</h5>
                     <p className="text-sm text-gray-600">
                       Your best hour ({timingData.bestPerformingHours[0]?.hour || 'peak period'}) outperforms your worst active hour by{' '}
-                      <span className="font-semibold">{performanceDiff.hours.countPercent}%</span> in order volume and{' '}
-                      <span className="font-semibold">{performanceDiff.hours.revenuePercent}%</span> in revenue.
+                      <span className="font-semibold">{formatPercentage(performanceDiff.hours.countPercent, 100)}</span> in order volume and{' '}
+                      <span className="font-semibold">{formatPercentage(performanceDiff.hours.revenuePercent, 100)}</span> in revenue.
                     </p>
                   </div>
                 )}
@@ -641,9 +731,9 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                               <span>Orders:</span>
                               <span className="text-right">{hour.count}</span>
                               <span>Revenue:</span>
-                              <span className="text-right">${hour.revenue.toLocaleString()}</span>
+                              <span className="text-right">{formatCurrency(hour.revenue)}</span>
                               <span>AOV:</span>
-                              <span className="text-right">${hour.averageOrderValue.toLocaleString()}</span>
+                              <span className="text-right">{formatCurrency(hour.averageOrderValue)}</span>
                             </div>
                           </div>
                         </div>
@@ -651,6 +741,52 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* Hourly Revenue Chart */}
+              <div className="mt-8">
+                <div className="flex justify-between text-sm font-medium text-gray-500 mb-2">
+                  <span>Hour of Day</span>
+                  <span>Revenue</span>
+                </div>
+                <div className="space-y-3">
+                  {timingData.hourlyDistribution?.sort((a, b) => {
+                    const hourA = parseInt(a.hour.split(':')[0]);
+                    const hourB = parseInt(b.hour.split(':')[0]);
+                    return hourA - hourB;
+                  }).map((hour) => {
+                    const maxRevenue = Math.max(...(timingData.hourlyDistribution || []).map(h => h.revenue));
+                    const isHighestRevenue = hour.revenue === maxRevenue;
+                    
+                    return (
+                      <div key={`revenue-${hour.hour}`} className="group">
+                        <div className="flex items-center mb-1">
+                          <div className="w-14 text-sm font-medium">{hour.hour}</div>
+                          <div className="flex-1 relative">
+                            <div className="flex items-center">
+                              <div 
+                                className={`${isHighestRevenue ? colors.best : colors.revenue} h-7 rounded-md transition-all group-hover:brightness-110`}
+                                style={{ width: `${Math.max((hour.revenue / maxRevenue) * 100, 1)}%` }}
+                              >
+                                {hour.revenue > 0 && (hour.revenue / maxRevenue) * 100 > 20 && (
+                                  <span className="text-white text-xs pl-2 leading-7">${formatCurrency(hour.revenue)}</span>
+                                )}
+                              </div>
+                              {hour.revenue > 0 && (hour.revenue / maxRevenue) * 100 <= 20 && (
+                                <span className="ml-2 text-sm">${formatCurrency(hour.revenue)}</span>
+                              )}
+                            </div>
+                            
+                            {/* AOV on right */}
+                            <div className="absolute top-1 right-0 text-xs text-gray-500">
+                              AOV: ${formatCurrency(hour.averageOrderValue)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               
               {/* Legend */}
@@ -706,7 +842,7 @@ const OrderTimingAnalysis: React.FC<OrderTimingAnalysisProps> = ({
                       </div>
                       <div className="bg-gray-50 p-2 rounded text-center">
                         <span className="block text-xs text-gray-500">Revenue</span>
-                        <span className="block text-sm font-semibold">${hour.revenue.toLocaleString()}</span>
+                        <span className="block text-sm font-semibold">${formatCurrency(hour.revenue)}</span>
                       </div>
                     </div>
                   </div>
