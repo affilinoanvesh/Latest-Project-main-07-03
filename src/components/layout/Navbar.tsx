@@ -4,7 +4,7 @@ import {
   BarChart3, ShoppingCart, Package, Settings, DollarSign, 
   Receipt, FileBarChart, Boxes, Calendar, ShoppingBag, 
   Truck, PlusCircle, ChevronDown, ChevronRight, LogOut,
-  Menu, X, Home, Users, Clock
+  Menu, X, Home, Users, Clock, CheckSquare
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavbar } from '../../App';
@@ -56,6 +56,12 @@ const navigationItems = [
       { id: 'customer-analytics', label: 'Customer Analytics', path: '/customer-analytics', icon: Users },
       { id: 'order-timing', label: 'Order Timing', path: '/order-timing', icon: Clock },
     ]
+  },
+  {
+    id: 'tasks',
+    label: 'Task Manager',
+    path: '/tasks',
+    icon: CheckSquare,
   },
   {
     id: 'settings',
