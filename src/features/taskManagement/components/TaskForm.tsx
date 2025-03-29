@@ -325,19 +325,84 @@ const TaskForm: React.FC<TaskFormProps> = ({
               </select>
             </div>
 
-            <div>
-              <label htmlFor="deadline" className="block text-sm font-medium text-gray-700 flex items-center">
+            {/* Deadline */}
+            <div className="mb-4">
+              <label htmlFor="deadline" className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
                 <Calendar className="h-4 w-4 mr-1" />
                 Deadline
               </label>
-              <input
-                type="datetime-local"
-                id="deadline"
-                name="deadline"
-                value={formData.deadline ? new Date(formData.deadline).toISOString().slice(0, 16) : ''}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border border-gray-300 bg-white px-3 py-2"
-              />
+              <div className="relative">
+                <input
+                  type="datetime-local"
+                  id="deadline"
+                  name="deadline"
+                  value={formData.deadline ? new Date(formData.deadline).toISOString().slice(0, 16) : ''}
+                  onChange={handleInputChange}
+                  className="w-full rounded-md border border-gray-300 pl-3 pr-10 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
+                  {formData.deadline && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFormData({ ...formData, deadline: '' });
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded-full"
+                      aria-label="Clear deadline"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    tomorrow.setHours(17, 0, 0, 0);
+                    setFormData({
+                      ...formData,
+                      deadline: tomorrow.toISOString().slice(0, 16)
+                    });
+                  }}
+                  className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md hover:bg-blue-100"
+                >
+                  Tomorrow 5 PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextWeek = new Date();
+                    nextWeek.setDate(nextWeek.getDate() + 7);
+                    nextWeek.setHours(17, 0, 0, 0);
+                    setFormData({
+                      ...formData,
+                      deadline: nextWeek.toISOString().slice(0, 16)
+                    });
+                  }}
+                  className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md hover:bg-blue-100"
+                >
+                  Next Week
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMonth = new Date();
+                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+                    nextMonth.setHours(17, 0, 0, 0);
+                    setFormData({
+                      ...formData,
+                      deadline: nextMonth.toISOString().slice(0, 16)
+                    });
+                  }}
+                  className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md hover:bg-blue-100"
+                >
+                  Next Month
+                </button>
+              </div>
             </div>
 
             <div>
