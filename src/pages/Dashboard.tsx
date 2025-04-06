@@ -17,6 +17,7 @@ import {
 } from '../services/api';
 import { calculateProfitAndLoss } from '../services/pnl';
 import { Link } from 'react-router-dom';
+import { getExpenses } from '../db/operations/expenses';
 
 const Dashboard: React.FC = () => {
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -84,7 +85,25 @@ const Dashboard: React.FC = () => {
       const inventoryData = await fetchInventory();
       const overheadCosts = await fetchOverheadCosts();
       
+      // Fetch actual expenses directly from database (to match Expenses page)
+      const expensesData = await getExpenses(dateRange.startDate, dateRange.endDate);
+      const totalActualExpenses = expensesData.reduce((sum, expense) => sum + expense.amount, 0);
+      
+      // Group expenses by category for the chart
+      const actualExpensesByCategory: Record<string, number> = {};
+      expensesData.forEach(expense => {
+        if (!actualExpensesByCategory[expense.category]) {
+          actualExpensesByCategory[expense.category] = 0;
+        }
+        actualExpensesByCategory[expense.category] += expense.amount;
+      });
+      
+      // Set the actual expenses from database
+      setExpensesByCategory(actualExpensesByCategory);
+      setTotalExpenses(totalActualExpenses);
+      
       // Calculate profit and margins with expenses for current period
+      // We still need this for other calculations, but we'll override the expense data
       const result = await calculateProfitAndLoss(
         ordersData,
         inventoryData,
@@ -106,8 +125,6 @@ const Dashboard: React.FC = () => {
       });
       
       setOrders(sortedOrders);
-      setExpensesByCategory(result.summary.expensesByCategory);
-      setTotalExpenses(result.summary.totalExpenses);
       
       // Calculate P&L summary
       const totalRevenue = sortedOrders.reduce((sum, order) => {
@@ -122,9 +139,9 @@ const Dashboard: React.FC = () => {
       
       const totalProfit = totalRevenue - totalCost;
       
-      // Calculate net profit based on the filtered orders' gross profit and expenses
-      // This ensures consistency between the displayed values
-      const calculatedNetProfit = totalProfit - result.summary.totalExpenses;
+      // Calculate net profit based on the filtered orders' gross profit and actual expenses
+      // This ensures consistency with the Expenses page
+      const calculatedNetProfit = totalProfit - totalActualExpenses;
       setNetProfit(calculatedNetProfit);
       
       const averageMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -167,15 +184,11 @@ const Dashboard: React.FC = () => {
       
       const previousTotalProfit = previousTotalRevenue - previousTotalCost;
       
-      // Calculate previous period expenses
-      const previousPeriodResult = await calculateProfitAndLoss(
-        ordersData,
-        inventoryData,
-        overheadCosts,
-        previousDateRange
-      );
+      // Fetch actual expenses for previous period
+      const previousExpensesData = await getExpenses(previousDateRange.startDate, previousDateRange.endDate);
+      const previousTotalActualExpenses = previousExpensesData.reduce((sum, expense) => sum + expense.amount, 0);
       
-      const previousNetProfit = previousTotalProfit - previousPeriodResult.summary.totalExpenses;
+      const previousNetProfit = previousTotalProfit - previousTotalActualExpenses;
       
       setPreviousPeriodData({
         totalRevenue: previousTotalRevenue,
