@@ -230,6 +230,16 @@ const PODetail: React.FC<PODetailProps> = ({
           </div>
         </div>
         
+        {(purchaseOrder.status === 'received' || purchaseOrder.status === 'partially_received') && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 flex items-center">
+            <AlertCircle size={18} className="mr-2 flex-shrink-0" />
+            <div>
+              <p className="font-medium">Important: Don't forget to click "Create Stock Movements"</p>
+              <p className="text-sm">This step is required to update inventory and add products to the expiry tracking system.</p>
+            </div>
+          </div>
+        )}
+        
         <div className="mb-6">
           <div className="flex border-b">
             <button
