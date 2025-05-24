@@ -2,8 +2,8 @@ import { db } from '../schema';
 import { ApiCredentials } from '../../types';
 import CryptoJS from 'crypto-js';
 
-// Secret key for encryption (in a real app, this would be stored in a secure environment variable)
-const ENCRYPTION_KEY = 'woocommerce-pnl-tracker-secret-key';
+// Secret key for encryption - using environment variable for security
+const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'fallback-development-key';
 
 // Helper function to encrypt sensitive data
 const encryptData = (data: string): string => {
@@ -25,8 +25,8 @@ export async function saveApiCredentials(credentials: ApiCredentials): Promise<v
     // Encrypt sensitive data before storing
     const encryptedCredentials = {
       ...credentials,
-      consumerKey: encryptData(credentials.consumerKey),
-      consumerSecret: encryptData(credentials.consumerSecret)
+      key: encryptData(credentials.key),
+      secret: encryptData(credentials.secret)
     };
     
     await db.transaction('rw', db.apiCredentials, async () => {
@@ -58,9 +58,9 @@ export async function getApiCredentials(): Promise<ApiCredentials | null> {
     
     // Decrypt sensitive data
     return {
-      url: encryptedCredentials.url,
-      consumerKey: decryptData(encryptedCredentials.consumerKey),
-      consumerSecret: decryptData(encryptedCredentials.consumerSecret)
+      store_url: encryptedCredentials.store_url,
+      key: decryptData(encryptedCredentials.key),
+      secret: decryptData(encryptedCredentials.secret)
     };
   } catch (error) {
     console.error('Error getting API credentials:', error);

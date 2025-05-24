@@ -63,7 +63,7 @@
     "vite": "^5.4.2"
   },
   "resolutions": {
-    "follow-redirects": "1.15.6",
+    "follow-redirects": "1.15.9",
     "@babel/helpers": "7.26.10",
     "@babel/runtime": "7.26.10",
     "@eslint/plugin-kit": "0.2.3",
